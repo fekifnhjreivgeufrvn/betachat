@@ -1,0 +1,873 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>betachat</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #e4ebe8;
+      --surface: #ffffff;
+      --ink: #18231f;
+      --muted: #5a6a65;
+      --line: #cbd7d2;
+      --mine: #14504a;
+      --mine-ink: #f4fbf9;
+      --accent: #f0b429;
+      --accent-ink: #2a2000;
+      --danger: #b3261e;
+      --danger-ink: #ffffff;
+      --online: #2fb574;
+      color-scheme: light dark;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0f1715;
+        --surface: #182420;
+        --ink: #e7f0ed;
+        --muted: #93a6a0;
+        --line: #263631;
+        --mine: #1f6b62;
+        --danger: #ff8a80;
+      --danger-ink: #2b0603;
+      }
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+
+    html, body { height: 100%; margin: 0; }
+    body {
+      display: flex;
+      justify-content: center;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: "Bricolage Grotesque", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      font-optical-sizing: auto;
+      font-size: 1rem;
+      line-height: 1.45;
+    }
+
+    :focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+    .app {
+      display: flex;
+      flex-direction: column;
+      width: min(100%, 760px);
+      height: 100dvh;
+    }
+    @media (min-width: 800px) {
+      .app { border-inline: 1px solid var(--line); }
+    }
+
+    .sr {
+      position: absolute; width: 1px; height: 1px; overflow: hidden;
+      clip: rect(0 0 0 0); white-space: nowrap;
+    }
+
+    /* Buttons */
+    .btn {
+      background: var(--accent);
+      color: var(--accent-ink);
+      border: 0;
+      border-radius: 14px;
+      padding: 0.6rem 1.1rem;
+      font: inherit;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn:hover { filter: brightness(1.06); }
+    .btn:disabled { opacity: 0.6; cursor: default; filter: none; }
+    .btn.danger { background: var(--danger); color: var(--danger-ink); }
+    .link {
+      background: none;
+      border: 0;
+      padding: 0.25rem 0.1rem;
+      font: inherit;
+      font-size: 0.9rem;
+      color: var(--muted);
+      text-decoration: underline;
+      text-underline-offset: 3px;
+      cursor: pointer;
+    }
+    .link:hover { color: var(--ink); }
+
+    input, textarea {
+      border: 1px solid var(--line);
+      background: var(--surface);
+      color: inherit;
+      border-radius: 14px;
+      padding: 0.6rem 0.8rem;
+      font: inherit;
+    }
+
+    /* Join screen */
+    .join {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      padding: 1.5rem;
+      overflow-y: auto;
+    }
+    .join form { width: 100%; max-width: 30rem; margin: auto 0; }
+    .join h1 {
+      margin: 0 0 1rem;
+      font-size: clamp(2.6rem, 11vw, 4.2rem);
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: -0.04em;
+    }
+    .join .lede { margin: 0 0 0.75rem; color: var(--muted); max-width: 34ch; }
+    .join label, .dlg label { display: block; margin: 1rem 0 0.35rem; font-weight: 600; }
+    .join input, .dlg input { width: 100%; }
+    .join .btn { width: 100%; margin-top: 1.25rem; padding: 0.75rem 1.1rem; }
+    .me, .switch { margin: 0; color: var(--muted); }
+    .switch { margin-top: 1rem; font-size: 0.9rem; }
+    .me strong { color: var(--ink); }
+    .me + .lede { margin-top: 0.75rem; }
+    .hint { margin: 0.4rem 0 0; font-size: 0.85rem; color: var(--muted); max-width: 44ch; }
+    .form-error { margin: 1rem 0 0; font-size: 0.9rem; color: var(--danger); }
+    .form-error:empty { display: none; }
+    .form-error[data-kind="info"], .notice[data-kind="info"] { color: var(--muted); }
+
+    /* Chat screen */
+    .chat { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+    .chat-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: 0.8rem 1rem;
+      border-bottom: 1px solid var(--line);
+    }
+    .title-row { display: flex; align-items: center; flex-wrap: wrap; gap: 0.2rem 0.6rem; }
+    .chat-head h1 {
+      margin: 0;
+      font-size: 1.4rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      line-height: 1.1;
+      overflow-wrap: anywhere;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      padding: 0.1rem 0.55rem;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--muted);
+    }
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-top: 0.15rem;
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+    .dot { width: 0.55rem; height: 0.55rem; border-radius: 50%; background: var(--muted); }
+    .status[data-state="open"] .dot { background: var(--online); }
+    .status[data-state="connecting"] .dot { background: var(--accent); }
+    .actions { display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; justify-content: flex-end; }
+
+    .messages {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      padding: 1rem;
+    }
+    .empty { margin: auto; color: var(--muted); }
+
+    .msg { display: flex; flex-direction: column; align-items: flex-start; margin-top: 0.8rem; }
+    .msg.mine { align-items: flex-end; }
+    .msg.grouped { margin-top: 0.2rem; }
+    .head { display: flex; gap: 0.5rem; align-items: baseline; margin: 0 0.4rem 0.2rem; font-size: 0.8rem; color: var(--muted); }
+    .who { font-weight: 600; color: var(--ink); }
+
+    .bubble {
+      margin: 0;
+      max-width: min(85%, 34rem);
+      padding: 0.5rem 0.85rem;
+      background: var(--surface);
+      border-radius: 4px 18px 18px 18px;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+    .msg.mine .bubble {
+      background: var(--mine);
+      color: var(--mine-ink);
+      border-radius: 18px 4px 18px 18px;
+    }
+    .msg.grouped .bubble { border-radius: 18px; }
+
+    .notice { margin: 0; padding: 0 1rem 0.4rem; font-size: 0.85rem; color: var(--danger); }
+    .notice:empty { display: none; }
+
+    .composer {
+      display: flex;
+      align-items: flex-end;
+      gap: 0.5rem;
+      padding: 0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom, 0px));
+      border-top: 1px solid var(--line);
+    }
+    .composer textarea { flex: 1; min-width: 0; max-height: 140px; resize: none; }
+
+    /* Room settings dialog */
+    dialog {
+      width: min(92vw, 28rem);
+      max-height: 90dvh;
+      padding: 0;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: var(--surface);
+      color: var(--ink);
+    }
+    dialog::backdrop { background: rgb(0 0 0 / 0.5); }
+    .dlg { padding: 1.25rem 1.25rem 1rem; }
+    .dlg h2 { margin: 0 0 0.25rem; font-size: 1.3rem; letter-spacing: -0.02em; overflow-wrap: anywhere; }
+    .dlg h3 { margin: 0; font-size: 1rem; }
+    .dlg .btn { margin-top: 0.75rem; }
+    .dlg .row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 1rem; }
+    .dlg hr { margin: 1.25rem 0 1rem; border: 0; border-top: 1px solid var(--line); }
+    .dlg .close { display: block; margin: 1rem 0 0 auto; }
+  </style>
+</head>
+<body>
+  <main class="app">
+
+    <section class="join" id="auth" hidden>
+      <form id="auth-form" novalidate>
+        <h1>betachat</h1>
+        <p class="lede" id="auth-lede"></p>
+
+        <label for="auth-user">Username</label>
+        <input id="auth-user" maxlength="20" autocomplete="username" autocapitalize="none" spellcheck="false">
+
+        <label for="auth-pw">Password</label>
+        <input id="auth-pw" type="password" maxlength="128">
+        <p class="hint" id="auth-hint" hidden>3 to 20 letters, numbers, underscores or hyphens. Passwords need at least 8 characters. There is no password reset, so keep it somewhere safe.</p>
+
+        <p class="form-error" id="auth-error" role="alert"></p>
+        <button class="btn" type="submit" id="auth-btn"></button>
+        <p class="switch"><span id="auth-switch-text"></span> <button class="link" type="button" id="auth-switch"></button></p>
+      </form>
+    </section>
+
+    <section class="join" id="join" hidden>
+      <form id="join-form" novalidate>
+        <h1>betachat</h1>
+        <p class="me">Signed in as <strong id="me-name"></strong> · <button class="link" type="button" id="logout">Log out</button></p>
+        <p class="lede">Pick a room. Add a password to make a new room private.</p>
+
+        <label for="room-input">Room</label>
+        <input id="room-input" maxlength="32" autocomplete="off" autocapitalize="none" spellcheck="false">
+
+        <label for="pw-input">Password (optional)</label>
+        <input id="pw-input" type="password" maxlength="128" autocomplete="off" aria-describedby="pw-hint">
+        <p class="hint" id="pw-hint">Leave blank for a public room. Set one to make a new private room, or enter it to join a private room. If you created the room, you don't need it.</p>
+
+        <p class="form-error" id="join-error" role="alert"></p>
+        <button class="btn" type="submit" id="join-btn">Join room</button>
+      </form>
+    </section>
+
+    <section class="chat" id="chat" hidden>
+      <header class="chat-head">
+        <div>
+          <div class="title-row">
+            <h1 id="room-title"></h1>
+            <span class="badge" id="private-badge" hidden>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+              Private
+            </span>
+          </div>
+          <div class="status" id="status" data-state="connecting">
+            <span class="dot" aria-hidden="true"></span>
+            <span id="status-text">Connecting…</span>
+            <span id="online"></span>
+          </div>
+        </div>
+        <div class="actions">
+          <button class="link" type="button" id="settings-btn" hidden>Room settings</button>
+          <button class="link" type="button" id="copy">Copy invite link</button>
+          <button class="link" type="button" id="switch-room">Switch room</button>
+        </div>
+      </header>
+
+      <div class="messages" id="messages" role="log" aria-live="polite" aria-label="Messages">
+        <p class="empty" id="empty">No messages yet. Say hello.</p>
+      </div>
+
+      <p class="notice" id="notice" role="status"></p>
+
+      <form class="composer" id="composer">
+        <label class="sr" for="text">Message</label>
+        <textarea id="text" rows="1" maxlength="500" placeholder="Write a message"></textarea>
+        <button class="btn" type="submit">Send</button>
+      </form>
+    </section>
+
+  </main>
+
+  <dialog id="settings" aria-labelledby="settings-title">
+    <div class="dlg">
+      <h2 id="settings-title">Room settings</h2>
+
+      <form id="pw-form" novalidate>
+        <p class="hint" id="pw-state"></p>
+        <label for="new-pw">New password</label>
+        <input id="new-pw" type="password" maxlength="128" autocomplete="new-password">
+        <div class="row">
+          <button class="btn" type="submit" id="pw-save"></button>
+          <button class="link" type="button" id="pw-remove" hidden>Remove password (make public)</button>
+        </div>
+      </form>
+
+      <hr>
+
+      <h3>Delete this room</h3>
+      <p class="hint" id="del-hint"></p>
+      <label for="del-confirm" id="del-label"></label>
+      <input id="del-confirm" autocomplete="off" autocapitalize="none" spellcheck="false">
+      <button class="btn danger" type="button" id="del-btn" disabled>Delete room</button>
+
+      <p class="form-error" id="settings-msg" role="status"></p>
+      <button class="link close" type="button" id="settings-close">Close</button>
+    </div>
+  </dialog>
+
+  <script>
+    (() => {
+      const $ = (sel) => document.querySelector(sel);
+      const MIN_ROOM_PASSWORD = 6;
+
+      // ---- Helpers, storage ----------------------------------------------
+      const cleanRoom = (value) =>
+        (value || "")
+          .toLowerCase()
+          .trim()
+          .replace(/\s+/g, "-")
+          .replace(/[^a-z0-9-]/g, "")
+          .slice(0, 32) || "general";
+
+      // Room passwords are kept for this tab only and forgotten when it closes.
+      // Who you are is not stored here at all: it lives in the server's login cookie,
+      // which page scripts cannot read.
+      const session = {
+        get(key) { try { return sessionStorage.getItem(key); } catch { return null; } },
+        set(key, value) { try { sessionStorage.setItem(key, value); } catch {} },
+        remove(key) { try { sessionStorage.removeItem(key); } catch {} },
+        clearPasswords() {
+          try {
+            Object.keys(sessionStorage)
+              .filter((key) => key.startsWith("chat:pw:"))
+              .forEach((key) => sessionStorage.removeItem(key));
+          } catch {}
+        },
+      };
+
+      async function api(path, body) {
+        const res = await fetch(path, {
+          method: body ? "POST" : "GET",
+          headers: body ? { "Content-Type": "application/json" } : {},
+          body: body ? JSON.stringify(body) : undefined,
+          credentials: "same-origin",
+        });
+        let data = {};
+        try { data = await res.json(); } catch {}
+        return { ok: res.ok, status: res.status, data };
+      }
+
+      // ---- State ---------------------------------------------------------
+      let me = "";    // username as registered
+      let myKey = ""; // lowercase; the server puts this in `cid` on my messages
+      let room = cleanRoom(new URLSearchParams(location.search).get("room"));
+      let password = session.get(`chat:pw:${room}`) || "";
+      let isPrivate = false;
+      let isOwner = false;
+      let pendingPassword = ""; // a new room password waiting for the server to confirm it
+
+      // ---- Elements ------------------------------------------------------
+      const views = { auth: $("#auth"), join: $("#join"), chat: $("#chat") };
+      const authForm = $("#auth-form"), authUser = $("#auth-user"), authPw = $("#auth-pw");
+      const authLede = $("#auth-lede"), authHint = $("#auth-hint"), authError = $("#auth-error"), authBtn = $("#auth-btn");
+      const authSwitchText = $("#auth-switch-text"), authSwitch = $("#auth-switch");
+      const joinForm = $("#join-form"), roomInput = $("#room-input"), pwInput = $("#pw-input");
+      const joinError = $("#join-error"), joinBtn = $("#join-btn"), meName = $("#me-name");
+      const textEl = $("#text"), listEl = $("#messages"), emptyEl = $("#empty"), noticeEl = $("#notice");
+      const statusEl = $("#status"), statusText = $("#status-text"), onlineEl = $("#online");
+      const badgeEl = $("#private-badge"), roomTitle = $("#room-title"), settingsBtn = $("#settings-btn");
+      const dlg = $("#settings"), pwForm = $("#pw-form"), pwState = $("#pw-state"), newPw = $("#new-pw");
+      const pwSave = $("#pw-save"), pwRemove = $("#pw-remove"), settingsMsg = $("#settings-msg");
+      const delHint = $("#del-hint"), delLabel = $("#del-label"), delConfirm = $("#del-confirm"), delBtn = $("#del-btn");
+
+      function applyRoom() {
+        document.title = `#${room} – betachat`;
+        roomTitle.textContent = `#${room}`;
+        badgeEl.hidden = !isPrivate;
+        settingsBtn.hidden = !isOwner;
+      }
+
+      // ---- Rendering -----------------------------------------------------
+      let lastMsg = null;
+      const fmtTime = (ts) => new Date(ts).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+      const nearBottom = () => listEl.scrollHeight - listEl.scrollTop - listEl.clientHeight < 80;
+
+      function renderMessage(m, forceScroll = false) {
+        const stick = forceScroll || nearBottom();
+        const mine = m.cid === myKey;
+        const grouped = lastMsg && lastMsg.cid === m.cid && m.ts - lastMsg.ts < 5 * 60 * 1000;
+
+        const el = document.createElement("article");
+        el.className = "msg" + (mine ? " mine" : "") + (grouped ? " grouped" : "");
+
+        if (!grouped) {
+          const head = document.createElement("div");
+          head.className = "head";
+          if (!mine) {
+            const who = document.createElement("span");
+            who.className = "who";
+            who.textContent = m.name;
+            head.append(who);
+          }
+          const time = document.createElement("time");
+          time.dateTime = new Date(m.ts).toISOString();
+          time.textContent = fmtTime(m.ts);
+          head.append(time);
+          el.append(head);
+        }
+
+        const bubble = document.createElement("p");
+        bubble.className = "bubble";
+        bubble.textContent = m.text; // textContent, never innerHTML: messages can't inject HTML
+        bubble.title = new Date(m.ts).toLocaleString();
+        el.append(bubble);
+
+        emptyEl.hidden = true;
+        listEl.append(el);
+        lastMsg = m;
+        if (stick) listEl.scrollTop = listEl.scrollHeight;
+      }
+
+      function clearMessages() {
+        listEl.querySelectorAll(".msg").forEach((el) => el.remove());
+        lastMsg = null;
+        emptyEl.hidden = false;
+        onlineEl.textContent = "";
+      }
+
+      function showHistory(messages) {
+        clearMessages();
+        emptyEl.hidden = messages.length > 0;
+        messages.forEach((m) => renderMessage(m, true));
+      }
+
+      let noticeTimer;
+      function notify(text, kind = "error") {
+        noticeEl.dataset.kind = kind;
+        noticeEl.textContent = text;
+        clearTimeout(noticeTimer);
+        noticeTimer = setTimeout(() => (noticeEl.textContent = ""), 4000);
+      }
+
+      function setStatus(state) {
+        statusEl.dataset.state = state;
+        statusText.textContent =
+          state === "open" ? "Connected" : state === "connecting" ? "Connecting…" : "Offline, retrying…";
+        if (state !== "open") onlineEl.textContent = "";
+      }
+
+      // ---- Views ---------------------------------------------------------
+      function show(name) {
+        for (const [key, el] of Object.entries(views)) el.hidden = key !== name;
+      }
+
+      let registering = false;
+      function setAuthMode(register) {
+        registering = register;
+        authLede.textContent = register
+          ? "Create an account. Your username is how everyone will see you."
+          : "Log in to chat.";
+        authBtn.textContent = register ? "Create account" : "Log in";
+        authHint.hidden = !register;
+        authPw.autocomplete = register ? "new-password" : "current-password";
+        authSwitchText.textContent = register ? "Already have an account?" : "New here?";
+        authSwitch.textContent = register ? "Log in" : "Create an account";
+        authError.textContent = "";
+      }
+
+      function showAuth(message = "") {
+        show("auth");
+        setAuthMode(false);
+        authError.dataset.kind = "";
+        authError.textContent = message;
+        authBtn.disabled = false;
+        authUser.focus();
+      }
+
+      function showJoin(message = "", focusEl = roomInput) {
+        show("join");
+        roomInput.value = room;
+        pwInput.value = password;
+        joinError.textContent = message;
+        joinBtn.disabled = false;
+        joinBtn.textContent = "Join room";
+        focusEl.focus();
+        if (focusEl.type === "text") focusEl.select();
+      }
+
+      function showChat() {
+        if (!views.chat.hidden) return;
+        show("chat");
+        textEl.focus();
+      }
+
+      // ---- WebSocket with auto-reconnect ---------------------------------
+      let ws = null, retry = 0, timer = null, blocked = false, joined = false, awaitingJoin = false;
+
+      function disconnect() {
+        clearTimeout(timer);
+        joined = false;
+        if (ws) {
+          const old = ws;
+          ws = null; // so the old socket's handlers ignore whatever happens next
+          try { old.close(); } catch {}
+        }
+      }
+
+      function onJoined(data) {
+        joined = true;
+        blocked = false;
+        retry = 0;
+        isPrivate = !!data.private;
+        isOwner = !!data.owner;
+        if (isPrivate && password) session.set(`chat:pw:${room}`, password);
+        applyRoom();
+        setStatus("open");
+        joinError.textContent = "";
+        // Only leave the form if the person just submitted it, not on a silent reconnect
+        if (awaitingJoin) {
+          awaitingJoin = false;
+          showChat();
+        }
+      }
+
+      function onJoinError(data) {
+        // A saved password for a room that has since become public: just join it without one
+        if (data.code === "room_public" && !awaitingJoin && password) {
+          password = "";
+          session.remove(`chat:pw:${room}`);
+          disconnect();
+          connect();
+          return;
+        }
+        blocked = true; // don't keep retrying with the same details
+        awaitingJoin = false;
+        const wrongPassword = ["auth_required", "auth_failed", "locked"].includes(data.code);
+        if (wrongPassword) {
+          password = "";
+          session.remove(`chat:pw:${room}`);
+        }
+        disconnect();
+        setStatus("closed");
+        showJoin(data.message, data.code === "room_public" ? roomInput : pwInput);
+      }
+
+      // The server removed me from the room (password changed, or room deleted)
+      function leaveRoom(message, focusEl) {
+        blocked = true;
+        awaitingJoin = false;
+        password = "";
+        session.remove(`chat:pw:${room}`);
+        pendingPassword = "";
+        isPrivate = isOwner = false;
+        if (dlg.open) dlg.close();
+        disconnect();
+        clearMessages();
+        applyRoom();
+        setStatus("closed");
+        showJoin(message, focusEl);
+      }
+
+      function onRoomUpdated(data) {
+        isPrivate = !!data.private;
+        if (!isPrivate) {
+          password = "";
+          session.remove(`chat:pw:${room}`);
+        } else if (pendingPassword) {
+          password = pendingPassword;
+          session.set(`chat:pw:${room}`, password);
+        }
+        pendingPassword = "";
+        applyRoom();
+        if (dlg.open) {
+          renderSettings();
+          newPw.value = "";
+          setSettingsMsg(data.message || "", "info");
+        } else if (data.message) {
+          notify(data.message, "info");
+        }
+      }
+
+      function onSettingsError(data) {
+        pendingPassword = "";
+        if (dlg.open) setSettingsMsg(data.message, "error");
+        else notify(data.message);
+      }
+
+      // Called when a session may have ended (logged out here, or the cookie expired)
+      function resetSession(message = "") {
+        disconnect();
+        clearMessages();
+        session.clearPasswords();
+        if (dlg.open) dlg.close();
+        me = myKey = password = pendingPassword = "";
+        isPrivate = isOwner = blocked = awaitingJoin = false;
+        applyRoom();
+        showAuth(message);
+      }
+
+      function connect() {
+        if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) return;
+        setStatus("connecting");
+
+        const proto = location.protocol === "https:" ? "wss" : "ws";
+        const socket = new WebSocket(`${proto}://${location.host}/ws?room=${encodeURIComponent(room)}`);
+        ws = socket;
+
+        // The login cookie rides along on the handshake; the room password travels inside the socket
+        // (over TLS), never in the URL. Who you are is decided by the server from the cookie.
+        socket.onopen = () => socket.send(JSON.stringify({ type: "join", password }));
+        socket.onmessage = (event) => {
+          if (socket !== ws) return;
+          let data;
+          try { data = JSON.parse(event.data); } catch { return; }
+          switch (data.type) {
+            case "joined": onJoined(data); break;
+            case "join_error": onJoinError(data); break;
+            case "history": showHistory(data.messages); break;
+            case "message": renderMessage(data.message, data.message.cid === myKey); break;
+            case "presence": onlineEl.textContent = `${data.count} online`; break;
+            case "error": notify(data.message); break;
+            case "room_updated": onRoomUpdated(data); break;
+            case "settings_error": onSettingsError(data); break;
+            case "kicked": leaveRoom(data.message, pwInput); break;
+            case "room_deleted":
+              leaveRoom(data.by && data.by.toLowerCase() === myKey ? `#${room} was deleted.` : data.message, roomInput);
+              break;
+          }
+        };
+        socket.onerror = () => socket.close();
+        socket.onclose = async () => {
+          if (socket !== ws) return;
+          joined = false;
+          setStatus("closed");
+          if (blocked) return;
+          // The server refuses the socket outright once the login has expired, so check that before retrying
+          try {
+            const res = await fetch("/api/me", { credentials: "same-origin" });
+            if (socket !== ws) return;
+            if (res.status === 401) { resetSession("Your login expired. Log in again."); return; }
+          } catch {}
+          if (blocked) return;
+          clearTimeout(timer);
+          timer = setTimeout(connect, Math.min(1000 * 2 ** retry++, 15000));
+        };
+      }
+
+      function sendCommand(payload) {
+        if (!joined || !ws || ws.readyState !== WebSocket.OPEN) {
+          setSettingsMsg("Not connected. Try again in a moment.", "error");
+          return false;
+        }
+        ws.send(JSON.stringify(payload));
+        return true;
+      }
+
+      // ---- Signing in and out --------------------------------------------
+      function signIn(username) {
+        me = username;
+        myKey = username.toLowerCase();
+        meName.textContent = username;
+        blocked = false;
+        retry = 0;
+        showChat();
+        connect();
+      }
+
+      authSwitch.addEventListener("click", () => {
+        setAuthMode(!registering);
+        authUser.focus();
+      });
+
+      authForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const username = authUser.value.trim();
+        const pw = authPw.value;
+        if (!username || !pw) { (username ? authPw : authUser).focus(); return; }
+
+        authBtn.disabled = true;
+        authError.dataset.kind = "";
+        authError.textContent = "";
+        try {
+          const { ok, data } = await api(registering ? "/api/register" : "/api/login", { username, password: pw });
+          if (!ok) {
+            authError.textContent = data.error || "Something went wrong. Try again.";
+            authPw.focus();
+            return;
+          }
+          authPw.value = "";
+          signIn(data.username);
+        } catch {
+          authError.textContent = "Couldn't reach the server. Check your connection and try again.";
+        } finally {
+          authBtn.disabled = false;
+        }
+      });
+
+      $("#logout").addEventListener("click", async () => {
+        try { await api("/api/logout", {}); } catch {}
+        resetSession();
+      });
+
+      // ---- Actions -------------------------------------------------------
+      joinForm.addEventListener("submit", (event) => {
+        event.preventDefault();
+        const newRoom = cleanRoom(roomInput.value);
+        const newPassword = pwInput.value;
+        joinError.textContent = "";
+
+        // Same room, same password, still connected: nothing to redo
+        if (newRoom === room && newPassword === password && joined && ws && ws.readyState === WebSocket.OPEN) {
+          showChat();
+          return;
+        }
+
+        disconnect();
+        clearMessages(); // never show one room's messages under another room's name
+        room = newRoom;
+        password = newPassword;
+        isPrivate = isOwner = false;
+        history.replaceState(null, "", `?room=${encodeURIComponent(room)}`);
+        applyRoom();
+
+        blocked = false;
+        retry = 0;
+        awaitingJoin = true;
+        joinBtn.disabled = true;
+        joinBtn.textContent = "Joining…";
+        connect();
+      });
+
+      $("#switch-room").addEventListener("click", () => showJoin());
+
+      const copyBtn = $("#copy");
+      copyBtn.addEventListener("click", async () => {
+        const link = `${location.origin}${location.pathname}?room=${encodeURIComponent(room)}`;
+        try {
+          await navigator.clipboard.writeText(link);
+          copyBtn.textContent = isPrivate ? "Link copied (no password)" : "Link copied";
+        } catch {
+          copyBtn.textContent = "Copy failed";
+        }
+        setTimeout(() => (copyBtn.textContent = "Copy invite link"), 2500);
+      });
+
+      $("#composer").addEventListener("submit", (event) => {
+        event.preventDefault();
+        const text = textEl.value.trim();
+        if (!text) return;
+        if (!joined || !ws || ws.readyState !== WebSocket.OPEN) {
+          notify("Not connected yet. Your message is still in the box.");
+          return;
+        }
+        ws.send(JSON.stringify({ type: "message", text })); // the server adds who it's from
+        textEl.value = "";
+        textEl.style.height = "auto";
+      });
+
+      textEl.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+          event.preventDefault();
+          $("#composer").requestSubmit();
+        }
+      });
+      textEl.addEventListener("input", () => {
+        textEl.style.height = "auto";
+        textEl.style.height = Math.min(textEl.scrollHeight, 140) + "px";
+      });
+
+      // ---- Room settings (owner only; the server checks this again) -------
+      function setSettingsMsg(text, kind) {
+        settingsMsg.dataset.kind = kind;
+        settingsMsg.textContent = text;
+      }
+
+      function renderSettings() {
+        $("#settings-title").textContent = `#${room} settings`;
+        pwState.textContent = isPrivate
+          ? "This room is private. Choosing a new password signs everyone else out, and they'll need the new one to come back."
+          : "This room is public. Setting a password makes it private and signs everyone else out until they enter it.";
+        pwSave.textContent = isPrivate ? "Change password" : "Set password";
+        pwRemove.hidden = !isPrivate;
+        delHint.textContent = `This deletes every message in #${room} and removes everyone from it. It can't be undone.`;
+        delLabel.textContent = `Type ${room} to confirm`;
+      }
+
+      settingsBtn.addEventListener("click", () => {
+        renderSettings();
+        newPw.value = delConfirm.value = "";
+        delBtn.disabled = true;
+        setSettingsMsg("", "error");
+        dlg.showModal();
+        newPw.focus();
+      });
+      $("#settings-close").addEventListener("click", () => dlg.close());
+
+      pwForm.addEventListener("submit", (event) => {
+        event.preventDefault();
+        const value = newPw.value;
+        if (value.length < MIN_ROOM_PASSWORD) {
+          setSettingsMsg(`Use a password of at least ${MIN_ROOM_PASSWORD} characters.`, "error");
+          newPw.focus();
+          return;
+        }
+        setSettingsMsg("", "error");
+        pendingPassword = value;
+        if (!sendCommand({ type: "set_password", password: value })) pendingPassword = "";
+      });
+
+      pwRemove.addEventListener("click", () => {
+        if (!confirm(`Remove the password? Anyone with the link will be able to join #${room} and read its recent messages.`)) return;
+        setSettingsMsg("", "error");
+        sendCommand({ type: "remove_password" });
+      });
+
+      delConfirm.addEventListener("input", () => {
+        delBtn.disabled = delConfirm.value.trim().toLowerCase().replace(/^#/, "") !== room;
+      });
+      delBtn.addEventListener("click", () => {
+        if (!delBtn.disabled) sendCommand({ type: "delete_room" });
+      });
+
+      // ---- Start ---------------------------------------------------------
+      applyRoom();
+      (async () => {
+        try {
+          const { ok, data } = await api("/api/me");
+          if (ok) { signIn(data.username); return; }
+        } catch {}
+        showAuth();
+      })();
+    })();
+  </script>
+</body>
+</html>
