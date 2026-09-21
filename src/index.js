@@ -25,6 +25,9 @@ const AVATAR_WINDOW_MS = 60 * 60 * 1000; // as long as REGISTER_WINDOW_MS, the l
 const MAX_AVATAR_CHANGES = 20; // uploads per account per hour
 const AVATAR_NOTICE_GAP_MS = 1000; // "my picture changed" notices from one connection go out at most this often
 
+// Typing indicator
+const TYPING_GAP_MS = 1000; // "still typing" refreshes from one connection go out at most this often
+
 // Set by the Worker after it has checked the login cookie. Room objects trust it
 // because only the Worker can reach them; the Worker overwrites whatever the client sent.
 const USER_HEADER = "X-Betachat-User";
@@ -588,12 +591,14 @@ export class UserDirectory extends DurableObject {
 //   client -> server  {type:"remove_password"}          owner only; makes the room public
 //   client -> server  {type:"delete_room"}              owner only; wipes the room
 //   client -> server  {type:"avatar_updated"}           "I changed my picture"; the room tells everyone to look again
+//   client -> server  {type:"typing", typing:true|false}   started/kept typing, or stopped
 //   server -> client  {type:"joined", private, owner}   then "history", "presence"
 //   server -> client  {type:"join_error", code, message}   socket is closed
 //   server -> client  {type:"room_updated", private, message}
 //   server -> client  {type:"kicked" | "room_deleted", by?, message}   socket is closed
 //   server -> client  {type:"settings_error", message}
 //   server -> client  {type:"avatar", cid, v}           that person's picture changed; v is its version (0 = none)
+//   server -> client  {type:"typing", cid, name, typing}   someone else started or stopped typing
 //   server -> client  {type:"message" | "presence" | "error", ...}
 // A socket receives nothing about the room until its join succeeds.
 // ---------------------------------------------------------------------------
@@ -689,7 +694,28 @@ export class ChatRoom extends DurableObject {
         return this.deleteRoom(ws, meta);
       case "avatar_updated":
         return this.avatarUpdated(ws, meta);
+      case "typing":
+        if (data.typing === true || data.typing === false) this.typing(ws, meta, data.typing);
+        return;
     }
+  }
+
+  // Typing is only ever passed on, never stored, so it costs nothing while a room is idle.
+  // Who is typing comes from the login, not from the client. To everyone else, someone counts as
+  // typing from their first "true" until a "false", their next message, or their socket closing; the
+  // page also drops anyone it hasn't heard from in a few seconds, so a lost "false" can't stick.
+  // A "true" repeated within TYPING_GAP_MS is skipped (the page only refreshes every few seconds), and
+  // a "false" from someone who isn't marked as typing is ignored, so neither can be used to flood the room.
+  typing(ws, meta, on) {
+    const now = Date.now();
+    if (on) {
+      if (meta.typing && now - (meta.lastTyping || 0) < TYPING_GAP_MS) return;
+      ws.serializeAttachment({ ...meta, typing: true, lastTyping: now });
+    } else {
+      if (!meta.typing) return;
+      ws.serializeAttachment({ ...meta, typing: false });
+    }
+    this.broadcast({ type: "typing", cid: meta.key, name: meta.user, typing: on }, meta.sid);
   }
 
   // The picture itself lives in the account directory and is fetched over HTTP; this only tells the
@@ -731,7 +757,7 @@ export class ChatRoom extends DurableObject {
       );
       return;
     }
-    ws.serializeAttachment({ ...meta, last: now });
+    ws.serializeAttachment({ ...meta, last: now, typing: false }); // the message itself ends "typing"
 
     // The sender is whoever is logged in on this socket, whatever the client claims
     const { id } = this.sql
@@ -755,12 +781,18 @@ export class ChatRoom extends DurableObject {
 
   async webSocketClose(ws) {
     try {
+      this.typing(ws, ws.deserializeAttachment() || {}, false); // leaving mid-sentence
+    } catch {}
+    try {
       ws.close(1000, "closing");
     } catch {}
     this.broadcastPresence();
   }
 
-  async webSocketError() {
+  async webSocketError(ws) {
+    try {
+      this.typing(ws, ws.deserializeAttachment() || {}, false);
+    } catch {}
     this.broadcastPresence();
   }
 
@@ -1000,9 +1032,11 @@ export class ChatRoom extends DurableObject {
     this.broadcast({ type: "presence", count: this.liveSockets().length });
   }
 
-  broadcast(payload) {
+  // `exceptSid`: skip the socket that caused this (it already knows)
+  broadcast(payload, exceptSid = null) {
     const message = JSON.stringify(payload);
     for (const socket of this.liveSockets()) {
+      if (exceptSid && (socket.deserializeAttachment() || {}).sid === exceptSid) continue;
       try {
         socket.send(message);
       } catch {}
