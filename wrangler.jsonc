@@ -1,0 +1,27 @@
+{
+  "name": "betachat",
+  "main": "src/index.js",
+  "compatibility_date": "2025-09-01",
+
+  // Serves everything in ./public (index.html) as static files
+  "assets": {
+    "directory": "./public"
+  },
+
+  // One ChatRoom object per room name, plus one UserDirectory that holds every account
+  "durable_objects": {
+    "bindings": [
+      { "name": "CHAT_ROOM", "class_name": "ChatRoom" },
+      { "name": "USERS", "class_name": "UserDirectory" }
+    ]
+  },
+
+  // SQLite-backed Durable Objects (available on the free plan)
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["ChatRoom"] },
+    { "tag": "v2", "new_sqlite_classes": ["UserDirectory"] }
+  ],
+
+  // Makes `npx wrangler tail` and dashboard logs useful
+  "observability": { "enabled": true }
+}

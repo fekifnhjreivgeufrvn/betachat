@@ -1,0 +1,16 @@
+{
+  "id": "/",
+  "name": "betachat",
+  "short_name": "betachat",
+  "description": "Chat rooms with accounts, private rooms and profile pictures.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#e4ebe8",
+  "theme_color": "#e4ebe8",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
