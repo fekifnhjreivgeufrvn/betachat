@@ -1,0 +1,1585 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>betachat</title>
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <meta name="theme-color" content="#e4ebe8" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0f1715" media="(prefers-color-scheme: dark)">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="betachat">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #e4ebe8;
+      --surface: #ffffff;
+      --ink: #18231f;
+      --muted: #5a6a65;
+      --line: #cbd7d2;
+      --mine: #14504a;
+      --mine-ink: #f4fbf9;
+      --accent: #f0b429;
+      --accent-ink: #2a2000;
+      --danger: #b3261e;
+      --danger-ink: #ffffff;
+      --online: #2fb574;
+      color-scheme: light dark;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0f1715;
+        --surface: #182420;
+        --ink: #e7f0ed;
+        --muted: #93a6a0;
+        --line: #263631;
+        --mine: #1f6b62;
+        --danger: #ff8a80;
+      --danger-ink: #2b0603;
+      }
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+
+    html, body { height: 100%; margin: 0; }
+    body {
+      display: flex;
+      justify-content: center;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: "Bricolage Grotesque", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      font-optical-sizing: auto;
+      font-size: 1rem;
+      line-height: 1.45;
+    }
+
+    :focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+    .app {
+      display: flex;
+      flex-direction: column;
+      width: min(100%, 760px);
+      height: 100dvh;
+    }
+    @media (min-width: 800px) {
+      .app { border-inline: 1px solid var(--line); }
+    }
+
+    .sr {
+      position: absolute; width: 1px; height: 1px; overflow: hidden;
+      clip: rect(0 0 0 0); white-space: nowrap;
+    }
+
+    /* Buttons */
+    .btn {
+      background: var(--accent);
+      color: var(--accent-ink);
+      border: 0;
+      border-radius: 14px;
+      padding: 0.6rem 1.1rem;
+      font: inherit;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn:hover { filter: brightness(1.06); }
+    .btn:disabled { opacity: 0.6; cursor: default; filter: none; }
+    .btn.danger { background: var(--danger); color: var(--danger-ink); }
+    .link {
+      background: none;
+      border: 0;
+      padding: 0.25rem 0.1rem;
+      font: inherit;
+      font-size: 0.9rem;
+      color: var(--muted);
+      text-decoration: underline;
+      text-underline-offset: 3px;
+      cursor: pointer;
+    }
+    .link:hover { color: var(--ink); }
+
+    input, textarea {
+      border: 1px solid var(--line);
+      background: var(--surface);
+      color: inherit;
+      border-radius: 14px;
+      padding: 0.6rem 0.8rem;
+      font: inherit;
+    }
+
+    /* Join screen */
+    .join {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      padding: 1.5rem;
+      overflow-y: auto;
+    }
+    .join form { width: 100%; max-width: 30rem; margin: auto 0; }
+    .join h1 {
+      margin: 0 0 1rem;
+      font-size: clamp(2.6rem, 11vw, 4.2rem);
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: -0.04em;
+    }
+    .join .lede { margin: 0 0 0.75rem; color: var(--muted); max-width: 34ch; }
+    .join label, .dlg label { display: block; margin: 1rem 0 0.35rem; font-weight: 600; }
+    .join input, .dlg input { width: 100%; }
+    .join .btn { width: 100%; margin-top: 1.25rem; padding: 0.75rem 1.1rem; }
+    .me, .switch { margin: 0; color: var(--muted); }
+    .switch { margin-top: 1rem; font-size: 0.9rem; }
+    .me strong { color: var(--ink); }
+    .me + .lede { margin-top: 0.75rem; }
+    .hint { margin: 0.4rem 0 0; font-size: 0.85rem; color: var(--muted); max-width: 44ch; }
+    .form-error { margin: 1rem 0 0; font-size: 0.9rem; color: var(--danger); }
+    .form-error:empty { display: none; }
+    .form-error[data-kind="info"], .notice[data-kind="info"] { color: var(--muted); }
+
+    /* Chat screen */
+    .chat { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+    .chat-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: 0.8rem 1rem;
+      border-bottom: 1px solid var(--line);
+    }
+    .title-row { display: flex; align-items: center; flex-wrap: wrap; gap: 0.2rem 0.6rem; }
+    .chat-head h1 {
+      margin: 0;
+      font-size: 1.4rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      line-height: 1.1;
+      overflow-wrap: anywhere;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      padding: 0.1rem 0.55rem;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--muted);
+    }
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-top: 0.15rem;
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+    .dot { width: 0.55rem; height: 0.55rem; border-radius: 50%; background: var(--muted); }
+    .status[data-state="open"] .dot { background: var(--online); }
+    .status[data-state="connecting"] .dot { background: var(--accent); }
+    .actions { display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; justify-content: flex-end; }
+
+    /* "Add to Home Screen" tip for iPhone and iPad, where notifications only work for an installed app */
+    .install-tip {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: 0.7rem 1rem;
+      border-bottom: 1px solid var(--line);
+      background: var(--surface);
+      font-size: 0.88rem;
+    }
+    .install-tip strong { display: block; }
+    .install-tip p { margin: 0.15rem 0 0; max-width: 62ch; color: var(--muted); }
+    .install-tip .link { flex: none; }
+
+    .messages {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      padding: 1rem;
+    }
+    .empty { margin: auto; color: var(--muted); }
+
+    /* Profile pictures: a photo if the person set one, otherwise their initial on a colour picked from their name */
+    .avatar {
+      --size: 2rem;
+      flex: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: var(--size);
+      height: var(--size);
+      overflow: hidden;
+      border-radius: 50%;
+      background: hsl(var(--hue, 170) 38% 34%);
+      color: #fff;
+      font-size: calc(var(--size) * 0.45);
+      font-weight: 700;
+      line-height: 1;
+      user-select: none;
+    }
+    .avatar img { display: block; width: 100%; height: 100%; object-fit: cover; }
+    .avatar.sm { --size: 1.5rem; }
+    .avatar.xl { --size: 6.5rem; }
+    .me .avatar { vertical-align: middle; margin: 0 0.35rem 0 0.25rem; }
+
+    .msg { display: flex; align-items: flex-start; gap: 0.5rem; margin-top: 0.8rem; }
+    .msg.mine { flex-direction: row-reverse; }
+    .msg.grouped { margin-top: 0.2rem; }
+    .msg-avatar { flex: none; width: 2rem; } /* stays even when empty, so grouped bubbles line up */
+    .msg-body {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      min-width: 0;
+      max-width: min(calc(100% - 2.5rem), 34rem);
+    }
+    .msg.mine .msg-body { align-items: flex-end; }
+    .head { display: flex; gap: 0.5rem; align-items: baseline; margin: 0 0.4rem 0.2rem; font-size: 0.8rem; color: var(--muted); }
+    .who { font-weight: 600; color: var(--ink); }
+
+    .bubble {
+      margin: 0;
+      max-width: 100%;
+      padding: 0.5rem 0.85rem;
+      background: var(--surface);
+      border-radius: 4px 18px 18px 18px;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+    .msg.mine .bubble {
+      background: var(--mine);
+      color: var(--mine-ink);
+      border-radius: 18px 4px 18px 18px;
+    }
+    .msg.grouped .bubble { border-radius: 18px; }
+
+    .notice { margin: 0; padding: 0 1rem 0.4rem; font-size: 0.85rem; color: var(--danger); }
+    .notice:empty { display: none; }
+
+    /* Typing indicator. The line always takes up its height, so the message list never jumps when it appears. */
+    .typing {
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+      min-height: 1.6rem;
+      margin: 0;
+      padding: 0 1rem 0.3rem;
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+    .typing-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .dots { display: inline-flex; gap: 3px; flex: none; }
+    .dots i {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: currentColor;
+      animation: typing-bounce 1.2s ease-in-out infinite;
+    }
+    .dots i:nth-child(2) { animation-delay: 0.15s; }
+    .dots i:nth-child(3) { animation-delay: 0.3s; }
+    @keyframes typing-bounce {
+      0%, 60%, 100% { opacity: 0.35; transform: none; }
+      30% { opacity: 1; transform: translateY(-3px); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .dots i { animation: none; opacity: 0.7; }
+    }
+
+    .composer {
+      display: flex;
+      align-items: flex-end;
+      gap: 0.5rem;
+      padding: 0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom, 0px));
+      border-top: 1px solid var(--line);
+    }
+    .composer textarea { flex: 1; min-width: 0; max-height: 140px; resize: none; }
+
+    /* Room settings dialog */
+    dialog {
+      width: min(92vw, 28rem);
+      max-height: 90dvh;
+      padding: 0;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: var(--surface);
+      color: var(--ink);
+    }
+    dialog::backdrop { background: rgb(0 0 0 / 0.5); }
+    .dlg { padding: 1.25rem 1.25rem 1rem; }
+    .dlg h2 { margin: 0 0 0.25rem; font-size: 1.3rem; letter-spacing: -0.02em; overflow-wrap: anywhere; }
+    .dlg h3 { margin: 0; font-size: 1rem; }
+    .dlg .btn { margin-top: 0.75rem; }
+    .dlg .row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 1rem; }
+    .dlg hr { margin: 1.25rem 0 1rem; border: 0; border-top: 1px solid var(--line); }
+    .dlg .close { display: block; margin: 1rem 0 0 auto; }
+    .profile-preview { display: flex; justify-content: center; margin: 1.25rem 0 0.5rem; }
+    .profile-pic .row { justify-content: center; margin-top: 0.25rem; }
+    .profile-pic .form-error { text-align: center; }
+  </style>
+</head>
+<body>
+  <main class="app">
+
+    <section class="join" id="auth" hidden>
+      <form id="auth-form" novalidate>
+        <h1>betachat</h1>
+        <p class="lede" id="auth-lede"></p>
+
+        <label for="auth-user">Username</label>
+        <input id="auth-user" maxlength="20" autocomplete="username" autocapitalize="none" spellcheck="false">
+
+        <label for="auth-pw">Password</label>
+        <input id="auth-pw" type="password" maxlength="128">
+        <p class="hint" id="auth-hint" hidden>3 to 20 letters, numbers, underscores or hyphens. Passwords need at least 8 characters. There is no password reset, so keep it somewhere safe.</p>
+
+        <p class="form-error" id="auth-error" role="alert"></p>
+        <button class="btn" type="submit" id="auth-btn"></button>
+        <p class="switch"><span id="auth-switch-text"></span> <button class="link" type="button" id="auth-switch"></button></p>
+      </form>
+    </section>
+
+    <section class="join" id="join" hidden>
+      <form id="join-form" novalidate>
+        <h1>betachat</h1>
+        <p class="me">Signed in as <span class="avatar sm" id="me-avatar" aria-hidden="true"></span><strong id="me-name"></strong> · <button class="link profile-open" type="button">Profile</button> · <button class="link" type="button" id="logout">Log out</button></p>
+        <p class="lede">Pick a room. Add a password to make a new room private.</p>
+
+        <label for="room-input">Room</label>
+        <input id="room-input" maxlength="32" autocomplete="off" autocapitalize="none" spellcheck="false">
+
+        <label for="pw-input">Password (optional)</label>
+        <input id="pw-input" type="password" maxlength="128" autocomplete="off" aria-describedby="pw-hint">
+        <p class="hint" id="pw-hint">Leave blank for a public room. Set one to make a new private room, or enter it to join a private room. If you created the room, you don't need it.</p>
+
+        <p class="form-error" id="join-error" role="alert"></p>
+        <button class="btn" type="submit" id="join-btn">Join room</button>
+      </form>
+    </section>
+
+    <section class="chat" id="chat" hidden>
+      <header class="chat-head">
+        <div>
+          <div class="title-row">
+            <h1 id="room-title"></h1>
+            <span class="badge" id="private-badge" hidden>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+              Private
+            </span>
+          </div>
+          <div class="status" id="status" data-state="connecting">
+            <span class="dot" aria-hidden="true"></span>
+            <span id="status-text">Connecting…</span>
+            <span id="online"></span>
+          </div>
+        </div>
+        <div class="actions">
+          <button class="link" type="button" id="settings-btn" hidden>Room settings</button>
+          <button class="link profile-open" type="button">Profile</button>
+          <button class="link" type="button" id="copy">Copy invite link</button>
+          <button class="link" type="button" id="alerts-btn" aria-pressed="false" title="Sound and a desktop notification for new messages while this tab is in the background. The unread count in the tab title is always on.">Alerts: off</button>
+          <button class="link" type="button" id="switch-room">Switch room</button>
+        </div>
+      </header>
+
+      <aside class="install-tip" id="install-tip" aria-label="Install betachat" hidden>
+        <div>
+          <strong>Get notified on your iPhone or iPad</strong>
+          <p>Add betachat to your Home Screen, open it from there, then turn on Alerts. In Safari, tap the Share button (if you don't see it, tap ••• first), choose Add to Home Screen, and leave "Open as Web App" on. Needs iOS 16.4 or later.</p>
+        </div>
+        <button class="link" type="button" id="install-dismiss">Not now</button>
+      </aside>
+
+      <div class="messages" id="messages" role="log" aria-live="polite" aria-label="Messages">
+        <p class="empty" id="empty">No messages yet. Say hello.</p>
+      </div>
+
+      <p class="notice" id="notice" role="status"></p>
+
+      <!-- Not a live region on purpose: announcing every keystroke-level change would drown out the messages -->
+      <p class="typing" id="typing"><span class="dots" id="typing-dots" aria-hidden="true" hidden><i></i><i></i><i></i></span><span class="typing-text" id="typing-text"></span></p>
+
+      <form class="composer" id="composer">
+        <label class="sr" for="text">Message</label>
+        <textarea id="text" rows="1" maxlength="500" placeholder="Write a message"></textarea>
+        <button class="btn" type="submit">Send</button>
+      </form>
+    </section>
+
+  </main>
+
+  <dialog id="settings" aria-labelledby="settings-title">
+    <div class="dlg">
+      <h2 id="settings-title">Room settings</h2>
+
+      <form id="pw-form" novalidate>
+        <p class="hint" id="pw-state"></p>
+        <label for="new-pw">New password</label>
+        <input id="new-pw" type="password" maxlength="128" autocomplete="new-password">
+        <div class="row">
+          <button class="btn" type="submit" id="pw-save"></button>
+          <button class="link" type="button" id="pw-remove" hidden>Remove password (make public)</button>
+        </div>
+      </form>
+
+      <hr>
+
+      <h3>Delete this room</h3>
+      <p class="hint" id="del-hint"></p>
+      <label for="del-confirm" id="del-label"></label>
+      <input id="del-confirm" autocomplete="off" autocapitalize="none" spellcheck="false">
+      <button class="btn danger" type="button" id="del-btn" disabled>Delete room</button>
+
+      <p class="form-error" id="settings-msg" role="status"></p>
+      <button class="link close" type="button" id="settings-close">Close</button>
+    </div>
+  </dialog>
+
+  <dialog id="profile" aria-labelledby="profile-title">
+    <div class="dlg profile-pic">
+      <h2 id="profile-title">Profile picture</h2>
+      <p class="hint">Shown next to your messages in every room. Pictures are cropped to a square and shrunk to 256 pixels.</p>
+
+      <div class="profile-preview"><span class="avatar xl" id="profile-avatar" aria-hidden="true"></span></div>
+      <input type="file" id="avatar-file" accept="image/*" hidden>
+      <div class="row">
+        <button class="btn" type="button" id="avatar-choose">Choose picture</button>
+        <button class="link" type="button" id="avatar-remove" hidden>Remove picture</button>
+      </div>
+
+      <p class="form-error" id="profile-msg" role="status"></p>
+      <button class="link close" type="button" id="profile-close">Close</button>
+    </div>
+  </dialog>
+
+  <script>
+    (() => {
+      const $ = (sel) => document.querySelector(sel);
+      const MIN_ROOM_PASSWORD = 6;
+
+      // ---- Helpers, storage ----------------------------------------------
+      const cleanRoom = (value) =>
+        (value || "")
+          .toLowerCase()
+          .trim()
+          .replace(/\s+/g, "-")
+          .replace(/[^a-z0-9-]/g, "")
+          .slice(0, 32) || "general";
+
+      // Room passwords are kept for this tab only and forgotten when it closes.
+      // Who you are is not stored here at all: it lives in the server's login cookie,
+      // which page scripts cannot read.
+      const session = {
+        get(key) { try { return sessionStorage.getItem(key); } catch { return null; } },
+        set(key, value) { try { sessionStorage.setItem(key, value); } catch {} },
+        remove(key) { try { sessionStorage.removeItem(key); } catch {} },
+        clearPasswords() {
+          try {
+            Object.keys(sessionStorage)
+              .filter((key) => key.startsWith("chat:pw:"))
+              .forEach((key) => sessionStorage.removeItem(key));
+          } catch {}
+        },
+      };
+
+      async function api(path, body) {
+        const res = await fetch(path, {
+          method: body ? "POST" : "GET",
+          headers: body ? { "Content-Type": "application/json" } : {},
+          body: body ? JSON.stringify(body) : undefined,
+          credentials: "same-origin",
+        });
+        let data = {};
+        try { data = await res.json(); } catch {}
+        return { ok: res.ok, status: res.status, data };
+      }
+
+      // ---- State ---------------------------------------------------------
+      let me = "";    // username as registered
+      let myKey = ""; // lowercase; the server puts this in `cid` on my messages
+      // The address wins; otherwise the room you were last in (so the Home Screen icon reopens it)
+      let lastRoom = null;
+      try { lastRoom = localStorage.getItem("betachat:room"); } catch {}
+      let room = cleanRoom(new URLSearchParams(location.search).get("room") || lastRoom);
+      let password = session.get(`chat:pw:${room}`) || "";
+      let isPrivate = false;
+      let isOwner = false;
+      let pendingPassword = ""; // a new room password waiting for the server to confirm it
+      let myAvatar = null; // when my picture was last set (its version), or null if I have none
+
+      // ---- Elements ------------------------------------------------------
+      const views = { auth: $("#auth"), join: $("#join"), chat: $("#chat") };
+      const authForm = $("#auth-form"), authUser = $("#auth-user"), authPw = $("#auth-pw");
+      const authLede = $("#auth-lede"), authHint = $("#auth-hint"), authError = $("#auth-error"), authBtn = $("#auth-btn");
+      const authSwitchText = $("#auth-switch-text"), authSwitch = $("#auth-switch");
+      const joinForm = $("#join-form"), roomInput = $("#room-input"), pwInput = $("#pw-input");
+      const joinError = $("#join-error"), joinBtn = $("#join-btn"), meName = $("#me-name");
+      const textEl = $("#text"), listEl = $("#messages"), emptyEl = $("#empty"), noticeEl = $("#notice");
+      const statusEl = $("#status"), statusText = $("#status-text"), onlineEl = $("#online");
+      const badgeEl = $("#private-badge"), roomTitle = $("#room-title"), settingsBtn = $("#settings-btn");
+      const dlg = $("#settings"), pwForm = $("#pw-form"), pwState = $("#pw-state"), newPw = $("#new-pw");
+      const pwSave = $("#pw-save"), pwRemove = $("#pw-remove"), settingsMsg = $("#settings-msg");
+      const delHint = $("#del-hint"), delLabel = $("#del-label"), delConfirm = $("#del-confirm"), delBtn = $("#del-btn");
+      const meAvatar = $("#me-avatar"), profileDlg = $("#profile"), profileAvatar = $("#profile-avatar");
+      const avatarFile = $("#avatar-file"), avatarChoose = $("#avatar-choose"), avatarRemove = $("#avatar-remove");
+      const profileMsg = $("#profile-msg");
+      const typingDots = $("#typing-dots"), typingText = $("#typing-text");
+      const alertsBtn = $("#alerts-btn");
+
+      function applyRoom() {
+        updateTitle();
+        roomTitle.textContent = `#${room}`;
+        badgeEl.hidden = !isPrivate;
+        settingsBtn.hidden = !isOwner;
+      }
+
+      // ---- Alerts for messages that arrive while you're looking elsewhere --
+      // Four layers, from "always" to "needs your say-so":
+      //   1. an unread count in the tab title, e.g. "(3) #general – betachat" (always on)
+      //   2. a short sound                            } only when "Alerts" is on;
+      //   3. a notification while the page is open    } the choice is remembered on this device
+      //   4. a push notification when betachat is closed: the server sends it to the browser's push
+      //      service, which wakes public/sw.js. That needs the server's push keys (see NOTIFICATIONS.md) and, on
+      //      iPhone and iPad, betachat added to the Home Screen and opened from there.
+      // Note: `unread` must be declared before the first applyRoom() call at the bottom of this script.
+      let unread = 0;
+      let alertsOn = false;
+      try { alertsOn = localStorage.getItem("betachat:alerts") === "1"; } catch {}
+      let audioCtx = null, lastBeep = -Infinity, lastNotification = null;
+
+      const isAway = () => document.hidden || !document.hasFocus();
+      const canNotify = () => "Notification" in window;
+      const notificationTag = () => `betachat:${room}`;
+
+      // What kind of device this is decides what can work
+      const IS_IOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+      const IS_STANDALONE = navigator.standalone === true || (!!window.matchMedia && window.matchMedia("(display-mode: standalone)").matches);
+      const PUSH_SUPPORTED = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+
+      let swReg = null;           // the service worker, once it is ready
+      let vapidKey = null;        // the server's public push key; null until known, or if the server has push switched off
+      let pushSub = null;         // this device's subscription with the browser's push service
+      let pushRegistered = false; // ...and the room I'm in has it, so it will push to me when I'm away
+
+      function updateTitle() {
+        document.title = `${unread ? `(${unread > 99 ? "99+" : unread}) ` : ""}#${room} – betachat`;
+      }
+
+      function clearUnread() {
+        unread = 0;
+        updateTitle();
+      }
+
+      // Browsers only let a page make sound after the person has clicked or typed in it, so the audio
+      // context is created and woken on such a gesture (the Alerts button, or the first click/keypress
+      // on a later visit when Alerts was already on).
+      function unlockAudio() {
+        try {
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          if (!AudioCtx) return Promise.resolve();
+          audioCtx = audioCtx || new AudioCtx();
+          if (audioCtx.state === "suspended") return audioCtx.resume().catch(() => {});
+        } catch {}
+        return Promise.resolve();
+      }
+
+      function unlockOnGesture() {
+        if (!alertsOn) return;
+        unlockAudio().then(() => {
+          if (audioCtx && audioCtx.state === "running") {
+            document.removeEventListener("pointerdown", unlockOnGesture);
+            document.removeEventListener("keydown", unlockOnGesture);
+          }
+        });
+      }
+      document.addEventListener("pointerdown", unlockOnGesture, { passive: true });
+      document.addEventListener("keydown", unlockOnGesture, { passive: true });
+
+      function beep() {
+        if (!audioCtx || audioCtx.state !== "running") return;
+        const now = performance.now();
+        if (now - lastBeep < 1500) return; // a burst of messages is one sound, not a machine gun
+        lastBeep = now;
+        const t = audioCtx.currentTime;
+        [[880, 0], [1175, 0.1]].forEach(([freq, offset]) => {
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.type = "sine";
+          osc.frequency.value = freq;
+          gain.gain.setValueAtTime(0.0001, t + offset);
+          gain.gain.exponentialRampToValueAtTime(0.12, t + offset + 0.015);
+          gain.gain.exponentialRampToValueAtTime(0.0001, t + offset + 0.2);
+          osc.connect(gain).connect(audioCtx.destination);
+          osc.start(t + offset);
+          osc.stop(t + offset + 0.22);
+        });
+      }
+
+      // A notification made by the open page. Goes through the service worker where there is one (the
+      // only way on Chrome for Android), and the plain Notification constructor otherwise.
+      async function showNotification(m) {
+        if (!canNotify() || Notification.permission !== "granted") return;
+        if (pushRegistered && document.hidden) return; // the server is sending this one as a push
+        const chars = Array.from(m.text);
+        const title = `${m.name} in #${room}`;
+        const options = {
+          body: chars.length > 140 ? `${chars.slice(0, 139).join("")}…` : m.text,
+          tag: notificationTag(), // a new message replaces the previous notification for this room
+          renotify: true,
+          silent: true, // our own sound plays, so the system shouldn't add a second one
+          icon: "/icons/icon-192.png",
+          data: { room },
+        };
+        try {
+          if (swReg) {
+            await swReg.showNotification(title, options);
+          } else {
+            const n = new Notification(title, options);
+            n.onclick = () => { window.focus(); n.close(); };
+            setTimeout(() => n.close(), 10000);
+            lastNotification = n;
+          }
+        } catch {}
+      }
+
+      // Called for every live message from someone else (not for history loaded on join)
+      function onIncoming(m) {
+        if (!isAway()) return;
+        unread++;
+        updateTitle();
+        if (!alertsOn) return;
+        beep();
+        showNotification(m);
+      }
+
+      function closeNotifications() {
+        if (lastNotification) {
+          try { lastNotification.close(); } catch {}
+          lastNotification = null;
+        }
+        if (swReg) swReg.getNotifications({ tag: notificationTag() }).then((list) => list.forEach((n) => n.close())).catch(() => {});
+      }
+
+      // Back on the page: the count and any notification (including pushed ones) are stale
+      function markSeen() {
+        if (isAway()) return;
+        if (unread) clearUnread();
+        closeNotifications();
+      }
+
+      // Tell the room whether this tab is hidden. A hidden tab counts as "away", so the server sends a push
+      // instead of trusting a socket that a phone may have frozen without closing.
+      function sendAway(away = document.hidden) {
+        if (joined && ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "away", away }));
+      }
+
+      document.addEventListener("visibilitychange", () => { sendAway(); markSeen(); });
+      window.addEventListener("focus", markSeen);
+      window.addEventListener("pagehide", () => sendAway(true));
+
+      // ---- Push: this device <-> the browser's push service <-> the room ---
+      const keyBytes = (b64u) => {
+        const b64 = b64u.replace(/-/g, "+").replace(/_/g, "/");
+        return Uint8Array.from(atob(b64 + "=".repeat((4 - (b64.length % 4)) % 4)), (c) => c.charCodeAt(0));
+      };
+
+      // Once at startup, with no prompts: get the service worker and the server's key, and pick an
+      // existing subscription back up if Alerts was already on.
+      async function startPush() {
+        if ("serviceWorker" in navigator) {
+          try {
+            await navigator.serviceWorker.register("/sw.js");
+            swReg = await navigator.serviceWorker.ready;
+          } catch { swReg = null; }
+        }
+        try {
+          const { ok, data } = await api("/api/push-key");
+          if (ok && typeof data.key === "string") vapidKey = data.key;
+        } catch {}
+        if (alertsOn) {
+          await ensureSubscription(false);
+          registerPush();
+        }
+      }
+
+      // Works out what this device can do and gets a subscription if it can. `mayPrompt` is true only
+      // inside a click, because browsers refuse to ask for permission any other way.
+      // Returns "push" | "off" | "denied" | "needs-install" | "unsupported".
+      async function ensureSubscription(mayPrompt) {
+        if (IS_IOS && !IS_STANDALONE && !PUSH_SUPPORTED) return "needs-install";
+        if (!canNotify()) return "unsupported";
+        if (Notification.permission === "default" && mayPrompt) {
+          try { await Notification.requestPermission(); } catch {}
+        }
+        if (Notification.permission === "denied") return "denied";
+        if (Notification.permission !== "granted") return "off";
+        if (!PUSH_SUPPORTED || !swReg || !vapidKey) return "off"; // page-open notifications only
+        try {
+          const wanted = keyBytes(vapidKey);
+          let sub = await swReg.pushManager.getSubscription();
+          if (sub) {
+            // A subscription made with a different key (the server's keys were replaced) can't be used
+            const have = sub.options && sub.options.applicationServerKey ? new Uint8Array(sub.options.applicationServerKey) : null;
+            if (!have || have.length !== wanted.length || have.some((b, i) => b !== wanted[i])) {
+              await sub.unsubscribe();
+              sub = null;
+            }
+          }
+          pushSub = sub || (await swReg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: wanted }));
+          return "push";
+        } catch {
+          return "off";
+        }
+      }
+
+      // Give this device's subscription to the room I'm in. Safe to repeat.
+      function registerPush() {
+        if (!alertsOn || !pushSub || !joined || !ws || ws.readyState !== WebSocket.OPEN) return;
+        ws.send(JSON.stringify({ type: "push_subscribe", subscription: pushSub.toJSON() }));
+        pushRegistered = true;
+      }
+
+      // Every (re)join: make sure this device is registered for the room
+      async function syncPush() {
+        if (!alertsOn) return;
+        if (!pushSub) await ensureSubscription(false);
+        registerPush();
+      }
+
+      // Stop notifications about the room I'm leaving
+      function unregisterPush() {
+        if (pushSub && joined && ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: "push_unsubscribe", endpoint: pushSub.endpoint }));
+        }
+        pushRegistered = false;
+      }
+
+      // Cancel this device's subscription altogether (Alerts turned off, or logging out)
+      async function dropPush() {
+        unregisterPush();
+        const sub = pushSub;
+        pushSub = null;
+        if (sub) { try { await sub.unsubscribe(); } catch {} }
+      }
+
+      // ---- The Alerts button -----------------------------------------------
+      const alertsSummary = (outcome) => {
+        switch (outcome) {
+          case "push": return "Alerts are on. You'll be notified of new messages even when betachat is closed.";
+          case "denied": return "Alerts are on with sound and an unread count. Notifications are blocked for this site in your browser settings.";
+          case "needs-install": return "Alerts are on with sound and an unread count. To be notified when the app is closed, add betachat to your Home Screen first.";
+          case "unsupported": return "Alerts are on with sound and an unread count. This browser can't show notifications.";
+          default:
+            return canNotify() && Notification.permission === "granted"
+              ? "Alerts are on: sound, an unread count and notifications while betachat is open."
+              : "Alerts are on with sound and an unread count.";
+        }
+      };
+
+      function renderAlertsButton() {
+        alertsBtn.textContent = `Alerts: ${alertsOn ? "on" : "off"}`;
+        alertsBtn.setAttribute("aria-pressed", String(alertsOn));
+      }
+
+      alertsBtn.addEventListener("click", async () => {
+        alertsOn = !alertsOn;
+        try { localStorage.setItem("betachat:alerts", alertsOn ? "1" : "0"); } catch {}
+        renderAlertsButton();
+        if (!alertsOn) {
+          await dropPush();
+          notify("Alerts are off. The unread count in the tab title stays on.", "info");
+          return;
+        }
+        await unlockAudio();
+        beep(); // so you hear right away what it will sound like
+        const outcome = await ensureSubscription(true);
+        if (outcome === "push") registerPush();
+        notify(alertsSummary(outcome), "info", 8000);
+        if (outcome === "needs-install") showInstallTip();
+      });
+      renderAlertsButton();
+
+      // ---- "Add to Home Screen" tip (iPhone and iPad only) -------------------
+      // Web push on iOS exists only for a site added to the Home Screen and opened from there, so the
+      // page says so, once in a while, until they've done it or waved it away.
+      const installTip = $("#install-tip");
+      const TIP_HIDDEN_UNTIL = "betachat:install-tip-until";
+
+      function showInstallTip() {
+        if (IS_IOS && !IS_STANDALONE) installTip.hidden = false;
+      }
+
+      function maybeShowInstallTip() {
+        try { if (Number(localStorage.getItem(TIP_HIDDEN_UNTIL)) > Date.now()) return; } catch {}
+        showInstallTip();
+      }
+
+      $("#install-dismiss").addEventListener("click", () => {
+        installTip.hidden = true;
+        try { localStorage.setItem(TIP_HIDDEN_UNTIL, String(Date.now() + 14 * 24 * 60 * 60 * 1000)); } catch {} // ask again in two weeks
+      });
+
+      // ---- Avatars -------------------------------------------------------
+      // A picture is fetched from /api/avatar/<username>. Until (or unless) it loads, the person's
+      // initial is shown, so someone with no picture never produces a broken image.
+      const avatarVersions = new Map(); // username (lowercase) -> cache-buster for their picture
+      const looksLikeUsername = (cid) => /^[a-z0-9_-]{3,20}$/.test(cid); // messages from before accounts have other ids
+      const initialOf = (name) => (Array.from(name || "")[0] || "?").toUpperCase();
+      const hueOf = (name) => {
+        let h = 0;
+        for (const ch of String(name).toLowerCase()) h = (h * 31 + ch.codePointAt(0)) % 360;
+        return h;
+      };
+      const avatarUrl = (cid) =>
+        `/api/avatar/${encodeURIComponent(cid)}` + (avatarVersions.has(cid) ? `?v=${avatarVersions.get(cid)}` : "");
+
+      function loadAvatar(el) {
+        const cid = el.dataset.cid;
+        if (!looksLikeUsername(cid)) return;
+        const run = (el.avatarRun = (el.avatarRun || 0) + 1); // a newer load makes older ones stop caring
+        const img = new Image();
+        img.alt = "";
+        img.onload = () => { if (el.avatarRun === run) el.replaceChildren(img); };
+        img.onerror = () => { if (el.avatarRun === run) el.textContent = initialOf(el.dataset.name); };
+        img.src = avatarUrl(cid);
+      }
+
+      function fillAvatar(el, cid, name) {
+        el.dataset.cid = cid;
+        el.dataset.name = name;
+        el.style.setProperty("--hue", hueOf(name));
+        el.textContent = initialOf(name);
+        loadAvatar(el);
+      }
+
+      function makeAvatar(cid, name) {
+        const el = document.createElement("span");
+        el.className = "avatar";
+        el.setAttribute("aria-hidden", "true"); // the name is already right there in text
+        fillAvatar(el, cid, name);
+        return el;
+      }
+
+      // Someone's picture changed (or was removed): look again everywhere it is on screen
+      function setAvatarVersion(cid, version) {
+        if (avatarVersions.get(cid) === version) return;
+        avatarVersions.set(cid, version);
+        document.querySelectorAll(".avatar").forEach((el) => {
+          if (el.dataset.cid === cid) loadAvatar(el);
+        });
+      }
+
+      // ---- Rendering -----------------------------------------------------
+      let lastMsg = null;
+      const fmtTime = (ts) => new Date(ts).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+      const nearBottom = () => listEl.scrollHeight - listEl.scrollTop - listEl.clientHeight < 80;
+
+      function renderMessage(m, forceScroll = false) {
+        const stick = forceScroll || nearBottom();
+        const mine = m.cid === myKey;
+        const grouped = lastMsg && lastMsg.cid === m.cid && m.ts - lastMsg.ts < 5 * 60 * 1000;
+
+        const el = document.createElement("article");
+        el.className = "msg" + (mine ? " mine" : "") + (grouped ? " grouped" : "");
+
+        // The picture sits beside the first message of a run; later ones keep an empty slot so they line up
+        const slot = document.createElement("div");
+        slot.className = "msg-avatar";
+        if (!grouped) slot.append(makeAvatar(m.cid, m.name));
+        const body = document.createElement("div");
+        body.className = "msg-body";
+
+        if (!grouped) {
+          const head = document.createElement("div");
+          head.className = "head";
+          if (!mine) {
+            const who = document.createElement("span");
+            who.className = "who";
+            who.textContent = m.name;
+            head.append(who);
+          }
+          const time = document.createElement("time");
+          time.dateTime = new Date(m.ts).toISOString();
+          time.textContent = fmtTime(m.ts);
+          head.append(time);
+          body.append(head);
+        }
+
+        const bubble = document.createElement("p");
+        bubble.className = "bubble";
+        bubble.textContent = m.text; // textContent, never innerHTML: messages can't inject HTML
+        bubble.title = new Date(m.ts).toLocaleString();
+        body.append(bubble);
+        el.append(slot, body);
+
+        emptyEl.hidden = true;
+        listEl.append(el);
+        lastMsg = m;
+        if (stick) listEl.scrollTop = listEl.scrollHeight;
+      }
+
+      // ---- Who else is typing --------------------------------------------
+      // Someone stays "typing" until they stop, send their message, or we hear nothing from them for a
+      // few seconds (their tab closed, their connection dropped): a lost "stopped" can't leave it stuck.
+      const TYPING_EXPIRE_MS = 6000;
+      const typers = new Map(); // username (lowercase) -> { name, timer }, in the order they started
+
+      function typingLabel(names) {
+        if (names.length === 1) return `${names[0]} is typing`;
+        if (names.length === 2) return `${names[0]} and ${names[1]} are typing`;
+        if (names.length === 3) return `${names[0]}, ${names[1]} and ${names[2]} are typing`;
+        return "Several people are typing";
+      }
+
+      function renderTyping() {
+        const names = [...typers.values()].map((t) => t.name);
+        typingText.textContent = names.length ? typingLabel(names) : ""; // textContent: names can't inject HTML
+        typingDots.hidden = names.length === 0;
+      }
+
+      function setTyping(cid, name, on) {
+        const old = typers.get(cid);
+        if (old) clearTimeout(old.timer);
+        if (on) {
+          typers.set(cid, {
+            name,
+            timer: setTimeout(() => { typers.delete(cid); renderTyping(); }, TYPING_EXPIRE_MS),
+          });
+        } else {
+          typers.delete(cid);
+        }
+        renderTyping();
+      }
+
+      function clearTyping() {
+        typers.forEach((t) => clearTimeout(t.timer));
+        typers.clear();
+        renderTyping();
+      }
+
+      function clearMessages() {
+        listEl.querySelectorAll(".msg").forEach((el) => el.remove());
+        lastMsg = null;
+        emptyEl.hidden = false;
+        onlineEl.textContent = "";
+        clearTyping();
+      }
+
+      function showHistory(messages) {
+        clearMessages();
+        emptyEl.hidden = messages.length > 0;
+        messages.forEach((m) => renderMessage(m, true));
+      }
+
+      let noticeTimer;
+      function notify(text, kind = "error", ms = 4000) {
+        noticeEl.dataset.kind = kind;
+        noticeEl.textContent = text;
+        clearTimeout(noticeTimer);
+        noticeTimer = setTimeout(() => (noticeEl.textContent = ""), ms);
+      }
+
+      function setStatus(state) {
+        statusEl.dataset.state = state;
+        statusText.textContent =
+          state === "open" ? "Connected" : state === "connecting" ? "Connecting…" : "Offline, retrying…";
+        if (state !== "open") onlineEl.textContent = "";
+      }
+
+      // ---- Views ---------------------------------------------------------
+      function show(name) {
+        for (const [key, el] of Object.entries(views)) el.hidden = key !== name;
+      }
+
+      let registering = false;
+      function setAuthMode(register) {
+        registering = register;
+        authLede.textContent = register
+          ? "Create an account. Your username is how everyone will see you."
+          : "Log in to chat.";
+        authBtn.textContent = register ? "Create account" : "Log in";
+        authHint.hidden = !register;
+        authPw.autocomplete = register ? "new-password" : "current-password";
+        authSwitchText.textContent = register ? "Already have an account?" : "New here?";
+        authSwitch.textContent = register ? "Log in" : "Create an account";
+        authError.textContent = "";
+      }
+
+      function showAuth(message = "") {
+        show("auth");
+        setAuthMode(false);
+        authError.dataset.kind = "";
+        authError.textContent = message;
+        authBtn.disabled = false;
+        authUser.focus();
+      }
+
+      function showJoin(message = "", focusEl = roomInput) {
+        show("join");
+        roomInput.value = room;
+        pwInput.value = password;
+        joinError.textContent = message;
+        joinBtn.disabled = false;
+        joinBtn.textContent = "Join room";
+        focusEl.focus();
+        if (focusEl.type === "text") focusEl.select();
+      }
+
+      function showChat() {
+        if (!views.chat.hidden) return;
+        show("chat");
+        textEl.focus();
+      }
+
+      // ---- WebSocket with auto-reconnect ---------------------------------
+      let ws = null, retry = 0, timer = null, blocked = false, joined = false, awaitingJoin = false;
+
+      function disconnect() {
+        clearTimeout(timer);
+        joined = false;
+        pushRegistered = false;
+        resetMyTyping();
+        if (ws) {
+          const old = ws;
+          ws = null; // so the old socket's handlers ignore whatever happens next
+          try { old.close(); } catch {}
+        }
+      }
+
+      function onJoined(data) {
+        joined = true;
+        blocked = false;
+        retry = 0;
+        try { localStorage.setItem("betachat:room", room); } catch {}
+        if (document.hidden) sendAway();
+        syncPush();
+        maybeShowInstallTip();
+        isPrivate = !!data.private;
+        isOwner = !!data.owner;
+        if (isPrivate && password) session.set(`chat:pw:${room}`, password);
+        applyRoom();
+        setStatus("open");
+        joinError.textContent = "";
+        // Only leave the form if the person just submitted it, not on a silent reconnect
+        if (awaitingJoin) {
+          awaitingJoin = false;
+          showChat();
+        }
+      }
+
+      function onJoinError(data) {
+        // A saved password for a room that has since become public: just join it without one
+        if (data.code === "room_public" && !awaitingJoin && password) {
+          password = "";
+          session.remove(`chat:pw:${room}`);
+          disconnect();
+          connect();
+          return;
+        }
+        blocked = true; // don't keep retrying with the same details
+        awaitingJoin = false;
+        const wrongPassword = ["auth_required", "auth_failed", "locked"].includes(data.code);
+        if (wrongPassword) {
+          password = "";
+          session.remove(`chat:pw:${room}`);
+        }
+        disconnect();
+        setStatus("closed");
+        showJoin(data.message, data.code === "room_public" ? roomInput : pwInput);
+      }
+
+      // The server removed me from the room (password changed, or room deleted)
+      function leaveRoom(message, focusEl) {
+        blocked = true;
+        awaitingJoin = false;
+        password = "";
+        session.remove(`chat:pw:${room}`);
+        pendingPassword = "";
+        isPrivate = isOwner = false;
+        if (dlg.open) dlg.close();
+        disconnect();
+        clearMessages();
+        unread = 0;
+        applyRoom();
+        setStatus("closed");
+        showJoin(message, focusEl);
+      }
+
+      function onRoomUpdated(data) {
+        isPrivate = !!data.private;
+        if (!isPrivate) {
+          password = "";
+          session.remove(`chat:pw:${room}`);
+        } else if (pendingPassword) {
+          password = pendingPassword;
+          session.set(`chat:pw:${room}`, password);
+        }
+        pendingPassword = "";
+        applyRoom();
+        if (dlg.open) {
+          renderSettings();
+          newPw.value = "";
+          setSettingsMsg(data.message || "", "info");
+        } else if (data.message) {
+          notify(data.message, "info");
+        }
+      }
+
+      function onSettingsError(data) {
+        pendingPassword = "";
+        if (dlg.open) setSettingsMsg(data.message, "error");
+        else notify(data.message);
+      }
+
+      // Called when a session may have ended (logged out here, or the cookie expired)
+      function resetSession(message = "") {
+        dropPush(); // before disconnect(), while the socket can still say so
+        disconnect();
+        clearMessages();
+        session.clearPasswords();
+        if (dlg.open) dlg.close();
+        if (profileDlg.open) profileDlg.close();
+        avatarVersions.clear();
+        myAvatar = null;
+        me = myKey = password = pendingPassword = "";
+        isPrivate = isOwner = blocked = awaitingJoin = false;
+        unread = 0;
+        applyRoom();
+        showAuth(message);
+      }
+
+      function connect() {
+        if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) return;
+        setStatus("connecting");
+
+        const proto = location.protocol === "https:" ? "wss" : "ws";
+        const socket = new WebSocket(`${proto}://${location.host}/ws?room=${encodeURIComponent(room)}`);
+        ws = socket;
+
+        // The login cookie rides along on the handshake; the room password travels inside the socket
+        // (over TLS), never in the URL. Who you are is decided by the server from the cookie.
+        socket.onopen = () => socket.send(JSON.stringify({ type: "join", password }));
+        socket.onmessage = (event) => {
+          if (socket !== ws) return;
+          let data;
+          try { data = JSON.parse(event.data); } catch { return; }
+          switch (data.type) {
+            case "joined": onJoined(data); break;
+            case "join_error": onJoinError(data); break;
+            case "history": showHistory(data.messages); break;
+            case "message":
+              renderMessage(data.message, data.message.cid === myKey);
+              setTyping(data.message.cid, "", false); // they sent it, so they're done typing
+              if (data.message.cid !== myKey) onIncoming(data.message);
+              break;
+            case "typing":
+              if (typeof data.cid === "string" && typeof data.name === "string" && data.cid !== myKey) {
+                setTyping(data.cid, data.name, data.typing === true);
+              }
+              break;
+            case "presence": onlineEl.textContent = `${data.count} online`; break;
+            case "error": notify(data.message); break;
+            case "room_updated": onRoomUpdated(data); break;
+            case "settings_error": onSettingsError(data); break;
+            case "avatar":
+              if (typeof data.cid === "string" && Number.isSafeInteger(data.v)) setAvatarVersion(data.cid, data.v);
+              break;
+            case "kicked": leaveRoom(data.message, pwInput); break;
+            case "room_deleted":
+              leaveRoom(data.by && data.by.toLowerCase() === myKey ? `#${room} was deleted.` : data.message, roomInput);
+              break;
+          }
+        };
+        socket.onerror = () => socket.close();
+        socket.onclose = async () => {
+          if (socket !== ws) return;
+          joined = false;
+          pushRegistered = false;
+          setStatus("closed");
+          if (blocked) return;
+          // The server refuses the socket outright once the login has expired, so check that before retrying
+          try {
+            const res = await fetch("/api/me", { credentials: "same-origin" });
+            if (socket !== ws) return;
+            if (res.status === 401) { resetSession("Your login expired. Log in again."); return; }
+          } catch {}
+          if (blocked) return;
+          clearTimeout(timer);
+          timer = setTimeout(connect, Math.min(1000 * 2 ** retry++, 15000));
+        };
+      }
+
+      function sendCommand(payload) {
+        if (!joined || !ws || ws.readyState !== WebSocket.OPEN) {
+          setSettingsMsg("Not connected. Try again in a moment.", "error");
+          return false;
+        }
+        ws.send(JSON.stringify(payload));
+        return true;
+      }
+
+      // ---- Signing in and out --------------------------------------------
+      function signIn(username, avatar) {
+        me = username;
+        myKey = username.toLowerCase();
+        meName.textContent = username;
+        myAvatar = avatar || null;
+        avatarVersions.clear();
+        if (myAvatar) avatarVersions.set(myKey, myAvatar);
+        fillAvatar(meAvatar, myKey, me);
+        blocked = false;
+        retry = 0;
+        showChat();
+        connect();
+      }
+
+      authSwitch.addEventListener("click", () => {
+        setAuthMode(!registering);
+        authUser.focus();
+      });
+
+      authForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const username = authUser.value.trim();
+        const pw = authPw.value;
+        if (!username || !pw) { (username ? authPw : authUser).focus(); return; }
+
+        authBtn.disabled = true;
+        authError.dataset.kind = "";
+        authError.textContent = "";
+        try {
+          const { ok, data } = await api(registering ? "/api/register" : "/api/login", { username, password: pw });
+          if (!ok) {
+            authError.textContent = data.error || "Something went wrong. Try again.";
+            authPw.focus();
+            return;
+          }
+          authPw.value = "";
+          signIn(data.username, data.avatar);
+        } catch {
+          authError.textContent = "Couldn't reach the server. Check your connection and try again.";
+        } finally {
+          authBtn.disabled = false;
+        }
+      });
+
+      $("#logout").addEventListener("click", async () => {
+        try { await api("/api/logout", {}); } catch {}
+        resetSession();
+      });
+
+      // ---- Actions -------------------------------------------------------
+      joinForm.addEventListener("submit", (event) => {
+        event.preventDefault();
+        const newRoom = cleanRoom(roomInput.value);
+        const newPassword = pwInput.value;
+        joinError.textContent = "";
+
+        // Same room, same password, still connected: nothing to redo
+        if (newRoom === room && newPassword === password && joined && ws && ws.readyState === WebSocket.OPEN) {
+          showChat();
+          return;
+        }
+
+        if (newRoom !== room) unregisterPush(); // notifications follow the room you're in
+        disconnect();
+        clearMessages(); // never show one room's messages under another room's name
+        room = newRoom;
+        password = newPassword;
+        isPrivate = isOwner = false;
+        unread = 0;
+        history.replaceState(null, "", `?room=${encodeURIComponent(room)}`);
+        applyRoom();
+
+        blocked = false;
+        retry = 0;
+        awaitingJoin = true;
+        joinBtn.disabled = true;
+        joinBtn.textContent = "Joining…";
+        connect();
+      });
+
+      $("#switch-room").addEventListener("click", () => showJoin());
+
+      const copyBtn = $("#copy");
+      copyBtn.addEventListener("click", async () => {
+        const link = `${location.origin}${location.pathname}?room=${encodeURIComponent(room)}`;
+        try {
+          await navigator.clipboard.writeText(link);
+          copyBtn.textContent = isPrivate ? "Link copied (no password)" : "Link copied";
+        } catch {
+          copyBtn.textContent = "Copy failed";
+        }
+        setTimeout(() => (copyBtn.textContent = "Copy invite link"), 2500);
+      });
+
+      $("#composer").addEventListener("submit", (event) => {
+        event.preventDefault();
+        const text = textEl.value.trim();
+        if (!text) return;
+        if (!joined || !ws || ws.readyState !== WebSocket.OPEN) {
+          notify("Not connected yet. Your message is still in the box.");
+          return;
+        }
+        ws.send(JSON.stringify({ type: "message", text })); // the server adds who it's from
+        resetMyTyping(); // the server ends "typing" itself when it gets the message
+        textEl.value = "";
+        textEl.style.height = "auto";
+      });
+
+      textEl.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+          event.preventDefault();
+          $("#composer").requestSubmit();
+        }
+      });
+      textEl.addEventListener("input", () => {
+        textEl.style.height = "auto";
+        textEl.style.height = Math.min(textEl.scrollHeight, 140) + "px";
+      });
+
+      // ---- Telling the room I'm typing -----------------------------------
+      // While there is text in the box: say so right away, then again every few seconds. Say I've stopped
+      // when the box is emptied, when I pause, or when I send. (The server also ends it on my message.)
+      const TYPING_REFRESH_MS = 3000; // how often to repeat "still typing"
+      const TYPING_PAUSE_MS = 4000;   // no keystroke for this long counts as stopped
+      let iAmTyping = false, typingSentAt = 0, typingPauseTimer;
+
+      function sendTyping(on) {
+        if (!joined || !ws || ws.readyState !== WebSocket.OPEN) return false;
+        ws.send(JSON.stringify({ type: "typing", typing: on }));
+        return true;
+      }
+
+      function resetMyTyping() {
+        clearTimeout(typingPauseTimer);
+        iAmTyping = false;
+        typingSentAt = 0;
+      }
+
+      function stopMyTyping() {
+        const wasTyping = iAmTyping;
+        resetMyTyping();
+        if (wasTyping) sendTyping(false);
+      }
+
+      textEl.addEventListener("input", () => {
+        if (!textEl.value.trim()) { stopMyTyping(); return; }
+        const now = Date.now();
+        if ((!iAmTyping || now - typingSentAt >= TYPING_REFRESH_MS) && sendTyping(true)) {
+          iAmTyping = true;
+          typingSentAt = now;
+        }
+        clearTimeout(typingPauseTimer);
+        typingPauseTimer = setTimeout(stopMyTyping, TYPING_PAUSE_MS);
+      });
+
+      // ---- Room settings (owner only; the server checks this again) -------
+      function setSettingsMsg(text, kind) {
+        settingsMsg.dataset.kind = kind;
+        settingsMsg.textContent = text;
+      }
+
+      function renderSettings() {
+        $("#settings-title").textContent = `#${room} settings`;
+        pwState.textContent = isPrivate
+          ? "This room is private. Choosing a new password signs everyone else out, and they'll need the new one to come back."
+          : "This room is public. Setting a password makes it private and signs everyone else out until they enter it.";
+        pwSave.textContent = isPrivate ? "Change password" : "Set password";
+        pwRemove.hidden = !isPrivate;
+        delHint.textContent = `This deletes every message in #${room} and removes everyone from it. It can't be undone.`;
+        delLabel.textContent = `Type ${room} to confirm`;
+      }
+
+      settingsBtn.addEventListener("click", () => {
+        renderSettings();
+        newPw.value = delConfirm.value = "";
+        delBtn.disabled = true;
+        setSettingsMsg("", "error");
+        dlg.showModal();
+        newPw.focus();
+      });
+      $("#settings-close").addEventListener("click", () => dlg.close());
+
+      pwForm.addEventListener("submit", (event) => {
+        event.preventDefault();
+        const value = newPw.value;
+        if (value.length < MIN_ROOM_PASSWORD) {
+          setSettingsMsg(`Use a password of at least ${MIN_ROOM_PASSWORD} characters.`, "error");
+          newPw.focus();
+          return;
+        }
+        setSettingsMsg("", "error");
+        pendingPassword = value;
+        if (!sendCommand({ type: "set_password", password: value })) pendingPassword = "";
+      });
+
+      pwRemove.addEventListener("click", () => {
+        if (!confirm(`Remove the password? Anyone with the link will be able to join #${room} and read its recent messages.`)) return;
+        setSettingsMsg("", "error");
+        sendCommand({ type: "remove_password" });
+      });
+
+      delConfirm.addEventListener("input", () => {
+        delBtn.disabled = delConfirm.value.trim().toLowerCase().replace(/^#/, "") !== room;
+      });
+      delBtn.addEventListener("click", () => {
+        if (!delBtn.disabled) sendCommand({ type: "delete_room" });
+      });
+
+      // ---- Profile picture -----------------------------------------------
+      const AVATAR_PX = 256;
+      const MAX_SOURCE_BYTES = 20 * 1024 * 1024;
+      let avatarBusy = false;
+
+      function setProfileMsg(text, kind = "error") {
+        profileMsg.dataset.kind = kind;
+        profileMsg.textContent = text;
+      }
+
+      function setAvatarBusy(busy) {
+        avatarBusy = busy;
+        avatarChoose.disabled = avatarRemove.disabled = busy;
+      }
+
+      const loadImage = (file) =>
+        new Promise((resolve, reject) => {
+          const url = URL.createObjectURL(file);
+          const img = new Image();
+          img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+          img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("unreadable")); };
+          img.src = url;
+        });
+      const canvasBlob = (canvas, type, quality) => new Promise((resolve) => canvas.toBlob(resolve, type, quality));
+
+      // Centre-crop to a square and shrink, in the browser, so uploads stay small.
+      // WebP where the browser can write it; otherwise (Safari) JPEG on a white background.
+      async function cropToAvatar(file) {
+        const img = await loadImage(file);
+        const side = Math.min(img.naturalWidth, img.naturalHeight);
+        if (!side) throw new Error("empty");
+        const canvas = document.createElement("canvas");
+        canvas.width = canvas.height = AVATAR_PX;
+        const ctx = canvas.getContext("2d");
+        ctx.imageSmoothingQuality = "high";
+        ctx.drawImage(
+          img,
+          (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side,
+          0, 0, AVATAR_PX, AVATAR_PX
+        );
+
+        const webp = await canvasBlob(canvas, "image/webp", 0.85);
+        if (webp && webp.type === "image/webp") return webp;
+
+        const flat = document.createElement("canvas");
+        flat.width = flat.height = AVATAR_PX;
+        const flatCtx = flat.getContext("2d");
+        flatCtx.fillStyle = "#fff";
+        flatCtx.fillRect(0, 0, AVATAR_PX, AVATAR_PX);
+        flatCtx.drawImage(canvas, 0, 0);
+        const jpeg = await canvasBlob(flat, "image/jpeg", 0.88);
+        if (!jpeg) throw new Error("encode");
+        return jpeg;
+      }
+
+      // My picture was set (version) or removed (null): update the screen, and tell the room
+      function onAvatarChanged(version) {
+        myAvatar = version;
+        avatarRemove.hidden = !myAvatar;
+        setAvatarVersion(myKey, version || 0); // 0 = none: the same number the room will announce
+        if (joined && ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: "avatar_updated" })); // the room looks up the version itself
+        }
+      }
+
+      // Runs an upload or a removal, with the busy state and error handling they share
+      async function avatarAction(request, successText) {
+        if (avatarBusy) return;
+        setAvatarBusy(true);
+        try {
+          const res = await request();
+          if (!res) return;
+          let data = {};
+          try { data = await res.json(); } catch {}
+          if (res.status === 401) { resetSession("Your login expired. Log in again."); return; }
+          if (!res.ok) { setProfileMsg(data.error || "Something went wrong. Try again."); return; }
+          onAvatarChanged(data.avatar || null);
+          setProfileMsg(successText, "info");
+        } catch {
+          setProfileMsg("Couldn't reach the server. Check your connection and try again.");
+        } finally {
+          setAvatarBusy(false);
+        }
+      }
+
+      function chooseAvatar(file) {
+        if (file.size > MAX_SOURCE_BYTES) {
+          setProfileMsg("That file is too large. Choose a picture under 20 MB.");
+          return;
+        }
+        setProfileMsg("Saving…", "info");
+        avatarAction(async () => {
+          let blob;
+          try {
+            blob = await cropToAvatar(file);
+          } catch {
+            setProfileMsg("That file couldn't be read as a picture. Try a JPEG, PNG or WebP.");
+            return null;
+          }
+          return fetch("/api/avatar", {
+            method: "POST",
+            headers: { "Content-Type": blob.type },
+            body: blob,
+            credentials: "same-origin",
+          });
+        }, "Picture saved.");
+      }
+
+      document.querySelectorAll(".profile-open").forEach((button) =>
+        button.addEventListener("click", () => {
+          fillAvatar(profileAvatar, myKey, me);
+          avatarRemove.hidden = !myAvatar;
+          setProfileMsg("");
+          profileDlg.showModal();
+          avatarChoose.focus();
+        })
+      );
+      avatarChoose.addEventListener("click", () => avatarFile.click());
+      avatarFile.addEventListener("change", () => {
+        const file = avatarFile.files[0];
+        avatarFile.value = ""; // so picking the same file again still counts as a change
+        if (file) chooseAvatar(file);
+      });
+      avatarRemove.addEventListener("click", () => {
+        setProfileMsg("Removing…", "info");
+        avatarAction(() => fetch("/api/avatar", { method: "DELETE", credentials: "same-origin" }), "Picture removed.");
+      });
+      $("#profile-close").addEventListener("click", () => profileDlg.close());
+
+      // ---- Start ---------------------------------------------------------
+      // Keep the address in step with the room (a tapped notification compares it to find the right tab)
+      try { history.replaceState(null, "", `?room=${encodeURIComponent(room)}`); } catch {}
+      applyRoom();
+      startPush();
+      (async () => {
+        try {
+          const { ok, data } = await api("/api/me");
+          if (ok) { signIn(data.username, data.avatar); return; }
+        } catch {}
+        showAuth();
+      })();
+    })();
+  </script>
+</body>
+</html>
