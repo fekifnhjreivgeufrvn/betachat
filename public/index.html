@@ -243,6 +243,36 @@
     .notice { margin: 0; padding: 0 1rem 0.4rem; font-size: 0.85rem; color: var(--danger); }
     .notice:empty { display: none; }
 
+    /* Typing indicator. The line always takes up its height, so the message list never jumps when it appears. */
+    .typing {
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+      min-height: 1.6rem;
+      margin: 0;
+      padding: 0 1rem 0.3rem;
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+    .typing-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .dots { display: inline-flex; gap: 3px; flex: none; }
+    .dots i {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: currentColor;
+      animation: typing-bounce 1.2s ease-in-out infinite;
+    }
+    .dots i:nth-child(2) { animation-delay: 0.15s; }
+    .dots i:nth-child(3) { animation-delay: 0.3s; }
+    @keyframes typing-bounce {
+      0%, 60%, 100% { opacity: 0.35; transform: none; }
+      30% { opacity: 1; transform: translateY(-3px); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .dots i { animation: none; opacity: 0.7; }
+    }
+
     .composer {
       display: flex;
       align-items: flex-end;
@@ -343,6 +373,9 @@
       </div>
 
       <p class="notice" id="notice" role="status"></p>
+
+      <!-- Not a live region on purpose: announcing every keystroke-level change would drown out the messages -->
+      <p class="typing" id="typing"><span class="dots" id="typing-dots" aria-hidden="true" hidden><i></i><i></i><i></i></span><span class="typing-text" id="typing-text"></span></p>
 
       <form class="composer" id="composer">
         <label class="sr" for="text">Message</label>
@@ -465,6 +498,7 @@
       const meAvatar = $("#me-avatar"), profileDlg = $("#profile"), profileAvatar = $("#profile-avatar");
       const avatarFile = $("#avatar-file"), avatarChoose = $("#avatar-choose"), avatarRemove = $("#avatar-remove");
       const profileMsg = $("#profile-msg");
+      const typingDots = $("#typing-dots"), typingText = $("#typing-text");
 
       function applyRoom() {
         document.title = `#${room} – betachat`;
@@ -572,11 +606,51 @@
         if (stick) listEl.scrollTop = listEl.scrollHeight;
       }
 
+      // ---- Who else is typing --------------------------------------------
+      // Someone stays "typing" until they stop, send their message, or we hear nothing from them for a
+      // few seconds (their tab closed, their connection dropped): a lost "stopped" can't leave it stuck.
+      const TYPING_EXPIRE_MS = 6000;
+      const typers = new Map(); // username (lowercase) -> { name, timer }, in the order they started
+
+      function typingLabel(names) {
+        if (names.length === 1) return `${names[0]} is typing`;
+        if (names.length === 2) return `${names[0]} and ${names[1]} are typing`;
+        if (names.length === 3) return `${names[0]}, ${names[1]} and ${names[2]} are typing`;
+        return "Several people are typing";
+      }
+
+      function renderTyping() {
+        const names = [...typers.values()].map((t) => t.name);
+        typingText.textContent = names.length ? typingLabel(names) : ""; // textContent: names can't inject HTML
+        typingDots.hidden = names.length === 0;
+      }
+
+      function setTyping(cid, name, on) {
+        const old = typers.get(cid);
+        if (old) clearTimeout(old.timer);
+        if (on) {
+          typers.set(cid, {
+            name,
+            timer: setTimeout(() => { typers.delete(cid); renderTyping(); }, TYPING_EXPIRE_MS),
+          });
+        } else {
+          typers.delete(cid);
+        }
+        renderTyping();
+      }
+
+      function clearTyping() {
+        typers.forEach((t) => clearTimeout(t.timer));
+        typers.clear();
+        renderTyping();
+      }
+
       function clearMessages() {
         listEl.querySelectorAll(".msg").forEach((el) => el.remove());
         lastMsg = null;
         emptyEl.hidden = false;
         onlineEl.textContent = "";
+        clearTyping();
       }
 
       function showHistory(messages) {
@@ -651,6 +725,7 @@
       function disconnect() {
         clearTimeout(timer);
         joined = false;
+        resetMyTyping();
         if (ws) {
           const old = ws;
           ws = null; // so the old socket's handlers ignore whatever happens next
@@ -772,7 +847,15 @@
             case "joined": onJoined(data); break;
             case "join_error": onJoinError(data); break;
             case "history": showHistory(data.messages); break;
-            case "message": renderMessage(data.message, data.message.cid === myKey); break;
+            case "message":
+              renderMessage(data.message, data.message.cid === myKey);
+              setTyping(data.message.cid, "", false); // they sent it, so they're done typing
+              break;
+            case "typing":
+              if (typeof data.cid === "string" && typeof data.name === "string" && data.cid !== myKey) {
+                setTyping(data.cid, data.name, data.typing === true);
+              }
+              break;
             case "presence": onlineEl.textContent = `${data.count} online`; break;
             case "error": notify(data.message); break;
             case "room_updated": onRoomUpdated(data); break;
@@ -915,6 +998,7 @@
           return;
         }
         ws.send(JSON.stringify({ type: "message", text })); // the server adds who it's from
+        resetMyTyping(); // the server ends "typing" itself when it gets the message
         textEl.value = "";
         textEl.style.height = "auto";
       });
@@ -928,6 +1012,42 @@
       textEl.addEventListener("input", () => {
         textEl.style.height = "auto";
         textEl.style.height = Math.min(textEl.scrollHeight, 140) + "px";
+      });
+
+      // ---- Telling the room I'm typing -----------------------------------
+      // While there is text in the box: say so right away, then again every few seconds. Say I've stopped
+      // when the box is emptied, when I pause, or when I send. (The server also ends it on my message.)
+      const TYPING_REFRESH_MS = 3000; // how often to repeat "still typing"
+      const TYPING_PAUSE_MS = 4000;   // no keystroke for this long counts as stopped
+      let iAmTyping = false, typingSentAt = 0, typingPauseTimer;
+
+      function sendTyping(on) {
+        if (!joined || !ws || ws.readyState !== WebSocket.OPEN) return false;
+        ws.send(JSON.stringify({ type: "typing", typing: on }));
+        return true;
+      }
+
+      function resetMyTyping() {
+        clearTimeout(typingPauseTimer);
+        iAmTyping = false;
+        typingSentAt = 0;
+      }
+
+      function stopMyTyping() {
+        const wasTyping = iAmTyping;
+        resetMyTyping();
+        if (wasTyping) sendTyping(false);
+      }
+
+      textEl.addEventListener("input", () => {
+        if (!textEl.value.trim()) { stopMyTyping(); return; }
+        const now = Date.now();
+        if ((!iAmTyping || now - typingSentAt >= TYPING_REFRESH_MS) && sendTyping(true)) {
+          iAmTyping = true;
+          typingSentAt = now;
+        }
+        clearTimeout(typingPauseTimer);
+        typingPauseTimer = setTimeout(stopMyTyping, TYPING_PAUSE_MS);
       });
 
       // ---- Room settings (owner only; the server checks this again) -------
