@@ -364,6 +364,7 @@
           <button class="link" type="button" id="settings-btn" hidden>Room settings</button>
           <button class="link profile-open" type="button">Profile</button>
           <button class="link" type="button" id="copy">Copy invite link</button>
+          <button class="link" type="button" id="alerts-btn" aria-pressed="false" title="Sound and a desktop notification for new messages while this tab is in the background. The unread count in the tab title is always on.">Alerts: off</button>
           <button class="link" type="button" id="switch-room">Switch room</button>
         </div>
       </header>
@@ -499,13 +500,148 @@
       const avatarFile = $("#avatar-file"), avatarChoose = $("#avatar-choose"), avatarRemove = $("#avatar-remove");
       const profileMsg = $("#profile-msg");
       const typingDots = $("#typing-dots"), typingText = $("#typing-text");
+      const alertsBtn = $("#alerts-btn");
 
       function applyRoom() {
-        document.title = `#${room} – betachat`;
+        updateTitle();
         roomTitle.textContent = `#${room}`;
         badgeEl.hidden = !isPrivate;
         settingsBtn.hidden = !isOwner;
       }
+
+      // ---- Alerts for messages that arrive while you're looking elsewhere --
+      // Three things, for messages from other people while this tab is hidden or not focused:
+      //   1. an unread count in the tab title, e.g. "(3) #general – betachat" (always on)
+      //   2. a short sound      } only when "Alerts" is on; the choice is remembered on this device
+      //   3. a desktop notification (only where the browser allows it and you agreed)
+      // iPhone and iPad Safari can't show page notifications (that needs the site installed to the
+      // Home Screen plus real push), so there you get the title count and the sound.
+      // Note: `unread` must be declared before the first applyRoom() call at the bottom of this script.
+      let unread = 0;
+      let alertsOn = false;
+      try { alertsOn = localStorage.getItem("betachat:alerts") === "1"; } catch {}
+      let audioCtx = null, lastBeep = -Infinity, lastNotification = null;
+
+      const isAway = () => document.hidden || !document.hasFocus();
+      const canNotify = () => "Notification" in window;
+
+      function updateTitle() {
+        document.title = `${unread ? `(${unread > 99 ? "99+" : unread}) ` : ""}#${room} – betachat`;
+      }
+
+      function clearUnread() {
+        unread = 0;
+        updateTitle();
+      }
+
+      // Browsers only let a page make sound after the person has clicked or typed in it, so the audio
+      // context is created and woken on such a gesture (the Alerts button, or the first click/keypress
+      // on a later visit when Alerts was already on).
+      function unlockAudio() {
+        try {
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          if (!AudioCtx) return Promise.resolve();
+          audioCtx = audioCtx || new AudioCtx();
+          if (audioCtx.state === "suspended") return audioCtx.resume().catch(() => {});
+        } catch {}
+        return Promise.resolve();
+      }
+
+      function unlockOnGesture() {
+        if (!alertsOn) return;
+        unlockAudio().then(() => {
+          if (audioCtx && audioCtx.state === "running") {
+            document.removeEventListener("pointerdown", unlockOnGesture);
+            document.removeEventListener("keydown", unlockOnGesture);
+          }
+        });
+      }
+      document.addEventListener("pointerdown", unlockOnGesture, { passive: true });
+      document.addEventListener("keydown", unlockOnGesture, { passive: true });
+
+      function beep() {
+        if (!audioCtx || audioCtx.state !== "running") return;
+        const now = performance.now();
+        if (now - lastBeep < 1500) return; // a burst of messages is one sound, not a machine gun
+        lastBeep = now;
+        const t = audioCtx.currentTime;
+        [[880, 0], [1175, 0.1]].forEach(([freq, offset]) => {
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.type = "sine";
+          osc.frequency.value = freq;
+          gain.gain.setValueAtTime(0.0001, t + offset);
+          gain.gain.exponentialRampToValueAtTime(0.12, t + offset + 0.015);
+          gain.gain.exponentialRampToValueAtTime(0.0001, t + offset + 0.2);
+          osc.connect(gain).connect(audioCtx.destination);
+          osc.start(t + offset);
+          osc.stop(t + offset + 0.22);
+        });
+      }
+
+      function showNotification(m) {
+        if (!canNotify() || Notification.permission !== "granted") return;
+        try {
+          const body = m.text.length > 140 ? `${m.text.slice(0, 139)}…` : m.text;
+          // Same tag: a new message replaces the previous notification for this room instead of stacking up.
+          // silent: our own sound plays, so the system shouldn't add a second one.
+          const n = new Notification(`${m.name} in #${room}`, { body, tag: `betachat:${room}`, renotify: true, silent: true });
+          n.onclick = () => { window.focus(); n.close(); };
+          setTimeout(() => n.close(), 10000);
+          lastNotification = n;
+        } catch {} // e.g. Chrome on Android only allows notifications through a service worker
+      }
+
+      // Called for every live message from someone else (not for history loaded on join)
+      function onIncoming(m) {
+        if (!isAway()) return;
+        unread++;
+        updateTitle();
+        if (!alertsOn) return;
+        beep();
+        showNotification(m);
+      }
+
+      // Back on the page: the count and any notification are stale
+      function markSeen() {
+        if (isAway()) return;
+        if (unread) clearUnread();
+        if (lastNotification) {
+          try { lastNotification.close(); } catch {}
+          lastNotification = null;
+        }
+      }
+      document.addEventListener("visibilitychange", markSeen);
+      window.addEventListener("focus", markSeen);
+
+      function renderAlertsButton() {
+        alertsBtn.textContent = `Alerts: ${alertsOn ? "on" : "off"}`;
+        alertsBtn.setAttribute("aria-pressed", String(alertsOn));
+      }
+
+      alertsBtn.addEventListener("click", async () => {
+        alertsOn = !alertsOn;
+        try { localStorage.setItem("betachat:alerts", alertsOn ? "1" : "0"); } catch {}
+        renderAlertsButton();
+        if (!alertsOn) { notify("Alerts are off. The unread count in the tab title stays on.", "info"); return; }
+
+        await unlockAudio();
+        beep(); // so you hear right away what it will sound like
+        if (!canNotify()) {
+          notify("Alerts are on: sound and an unread count in the tab title. This browser can't show notifications.", "info");
+          return;
+        }
+        if (Notification.permission === "default") {
+          try { await Notification.requestPermission(); } catch {}
+        }
+        notify(
+          Notification.permission === "granted"
+            ? "Alerts are on: sound, a notification and an unread count while this tab is in the background."
+            : "Alerts are on: sound and an unread count. Notifications are blocked for this site in your browser settings.",
+          "info"
+        );
+      });
+      renderAlertsButton();
 
       // ---- Avatars -------------------------------------------------------
       // A picture is fetched from /api/avatar/<username>. Until (or unless) it loads, the person's
@@ -782,6 +918,7 @@
         if (dlg.open) dlg.close();
         disconnect();
         clearMessages();
+        unread = 0;
         applyRoom();
         setStatus("closed");
         showJoin(message, focusEl);
@@ -824,6 +961,7 @@
         myAvatar = null;
         me = myKey = password = pendingPassword = "";
         isPrivate = isOwner = blocked = awaitingJoin = false;
+        unread = 0;
         applyRoom();
         showAuth(message);
       }
@@ -850,6 +988,7 @@
             case "message":
               renderMessage(data.message, data.message.cid === myKey);
               setTyping(data.message.cid, "", false); // they sent it, so they're done typing
+              if (data.message.cid !== myKey) onIncoming(data.message);
               break;
             case "typing":
               if (typeof data.cid === "string" && typeof data.name === "string" && data.cid !== myKey) {
@@ -964,6 +1103,7 @@
         room = newRoom;
         password = newPassword;
         isPrivate = isOwner = false;
+        unread = 0;
         history.replaceState(null, "", `?room=${encodeURIComponent(room)}`);
         applyRoom();
 
