@@ -17,6 +17,14 @@ const MAX_LOGIN_FAILS_USER = 15; // ...and against one account (from anywhere) p
 const REGISTER_WINDOW_MS = 60 * 60 * 1000;
 const MAX_REGISTRATIONS_IP = 10; // accounts created from one IP per hour
 
+// Profile pictures. The page shrinks every picture to 256 x 256 (about 10-30 KB) before uploading;
+// the server re-checks all of this itself instead of trusting the page.
+const MAX_AVATAR_BYTES = 128 * 1024;
+const MAX_AVATAR_PX = 512;
+const AVATAR_WINDOW_MS = 60 * 60 * 1000; // as long as REGISTER_WINDOW_MS, the longest window `bump` keeps
+const MAX_AVATAR_CHANGES = 20; // uploads per account per hour
+const AVATAR_NOTICE_GAP_MS = 1000; // "my picture changed" notices from one connection go out at most this often
+
 // Set by the Worker after it has checked the login cookie. Room objects trust it
 // because only the Worker can reach them; the Worker overwrites whatever the client sent.
 const USER_HEADER = "X-Betachat-User";
@@ -109,9 +117,92 @@ async function sha256Hex(text) {
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+// ---- Uploaded pictures -----------------------------------------------------
+// Reads a request body, giving up (null) as soon as it is bigger than `max` bytes.
+async function readBytes(request, max) {
+  if (Number(request.headers.get("Content-Length")) > max) return null;
+  if (!request.body) return new Uint8Array(0);
+  const reader = request.body.getReader();
+  const chunks = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > max) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes;
+}
+
+// Works out what an image really is, and how many pixels wide and tall, from its own header,
+// without decoding it. Only JPEG, PNG and still WebP are accepted; anything else returns null.
+// (The size matters: a tiny file can still decode into a huge bitmap in someone's browser.)
+function sniffImage(b) {
+  const view = new DataView(b.buffer, b.byteOffset, b.byteLength);
+  const text = (at, len) => String.fromCharCode(...b.subarray(at, at + len));
+
+  // PNG: 8-byte signature, then the IHDR chunk starts with the width and height
+  if (b.length >= 24 && b[0] === 0x89 && text(1, 3) === "PNG" && b[4] === 0x0d && b[5] === 0x0a &&
+      b[6] === 0x1a && b[7] === 0x0a && text(12, 4) === "IHDR") {
+    return { type: "image/png", width: view.getUint32(16), height: view.getUint32(20) };
+  }
+
+  // JPEG: walk the segments until the frame header (SOF), which holds the size
+  if (b.length > 4 && b[0] === 0xff && b[1] === 0xd8) {
+    let i = 2;
+    while (i + 4 <= b.length) {
+      if (b[i] !== 0xff) return null;
+      const marker = b[i + 1];
+      if (marker === 0xff) { i++; continue; } // padding
+      if (marker === 0x01 || (marker >= 0xd0 && marker <= 0xd8)) { i += 2; continue; } // no length field
+      if (marker === 0xd9 || marker === 0xda) return null; // reached the image data with no size found
+      const length = view.getUint16(i + 2);
+      if (length < 2) return null;
+      const isFrame = marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc;
+      if (isFrame) {
+        if (i + 9 > b.length) return null;
+        return { type: "image/jpeg", height: view.getUint16(i + 5), width: view.getUint16(i + 7) };
+      }
+      i += 2 + length;
+    }
+    return null;
+  }
+
+  // WebP: RIFF container; lossy (VP8), lossless (VP8L) and extended (VP8X) store the size differently
+  if (b.length >= 30 && text(0, 4) === "RIFF" && text(8, 4) === "WEBP") {
+    const kind = text(12, 4);
+    if (kind === "VP8 " && b[23] === 0x9d && b[24] === 0x01 && b[25] === 0x2a) {
+      return {
+        type: "image/webp",
+        width: view.getUint16(26, true) & 0x3fff,
+        height: view.getUint16(28, true) & 0x3fff,
+      };
+    }
+    if (kind === "VP8L" && b[20] === 0x2f) {
+      const bits = view.getUint32(21, true);
+      return { type: "image/webp", width: (bits & 0x3fff) + 1, height: ((bits >>> 14) & 0x3fff) + 1 };
+    }
+    if (kind === "VP8X" && !(b[20] & 0x02)) { // 0x02 = animated
+      const u24 = (at) => b[at] | (b[at + 1] << 8) | (b[at + 2] << 16);
+      return { type: "image/webp", width: u24(24) + 1, height: u24(27) + 1 };
+    }
+  }
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // Worker
-//   /api/*  register, log in, log out, who am I
+//   /api/*  register, log in, log out, who am I, profile pictures
 //   /ws     the chat socket; requires a login and is routed to the right room
 // Everything else (index.html etc.) is served from ./public by Workers Assets.
 // The room password is never put in the URL; it is sent inside the socket.
@@ -154,7 +245,18 @@ async function handleApi(request, env, url) {
   if (url.pathname === "/api/me" && request.method === "GET") {
     const token = getCookie(request, COOKIE);
     const session = token ? await users.whoami(token) : null;
-    return session ? json({ username: session.name }) : json({ error: "Not logged in." }, 401);
+    return session
+      ? json({ username: session.name, avatar: session.avatar })
+      : json({ error: "Not logged in." }, 401);
+  }
+
+  // Anyone logged in can look at anyone's picture (the name is the lookup key)
+  if (url.pathname.startsWith("/api/avatar/") && request.method === "GET") return getAvatar(request, env, url);
+
+  if (url.pathname === "/api/avatar" && (request.method === "POST" || request.method === "DELETE")) {
+    // A cross-site page can't send these without a preflight, and the cookie is SameSite=Lax as well.
+    if (!sameOrigin(request, url)) return json({ error: "Forbidden." }, 403);
+    return request.method === "POST" ? uploadAvatar(request, env) : removeAvatar(request, env);
   }
 
   if (request.method !== "POST") return json({ error: "Not found." }, 404);
@@ -185,12 +287,65 @@ async function handleApi(request, env, url) {
         ? await users.register(body.username, body.password, ip)
         : await users.login(body.username, body.password, ip);
     if (!result.ok) return json({ error: result.message, code: result.code }, result.status);
-    return json({ username: result.name }, 200, {
+    return json({ username: result.name, avatar: result.avatar }, 200, {
       "Set-Cookie": sessionCookie(result.token, SESSION_MS / 1000, secure),
     });
   }
 
   return json({ error: "Not found." }, 404);
+}
+
+// ---- Profile pictures ------------------------------------------------------
+// Served from our own origin, so everything about them is locked down: the stored type is the one
+// found by sniffing (never the client's claim), and browsers are told not to guess or run anything.
+async function getAvatar(request, env, url) {
+  let key = "";
+  try {
+    key = decodeURIComponent(url.pathname.slice("/api/avatar/".length)).toLowerCase();
+  } catch {}
+  const result = await userDirectory(env).avatar(getCookie(request, COOKIE), key);
+  if (!result.ok) {
+    // "No picture" is cached briefly so a room full of people without one doesn't cost a request each time
+    const cache = result.status === 404 ? "private, max-age=30" : "no-store";
+    return new Response(null, { status: result.status, headers: { "Cache-Control": cache } });
+  }
+  const etag = `"${result.updated}"`;
+  const headers = {
+    "Content-Type": result.type,
+    "Cache-Control": "private, no-cache", // always check, but a 304 makes that nearly free
+    ETag: etag,
+    "X-Content-Type-Options": "nosniff",
+    "Content-Security-Policy": "default-src 'none'; sandbox",
+  };
+  if (request.headers.get("If-None-Match") === etag) return new Response(null, { status: 304, headers });
+  return new Response(result.data, { headers });
+}
+
+async function uploadAvatar(request, env) {
+  const token = getCookie(request, COOKIE);
+  if (!token) return json({ error: "Log in first." }, 401);
+  if (!(request.headers.get("Content-Type") || "").startsWith("image/")) {
+    return json({ error: "Expected an image.", code: "bad_image" }, 415);
+  }
+  const bytes = await readBytes(request, MAX_AVATAR_BYTES);
+  if (!bytes) return json({ error: "That picture is too big.", code: "too_large" }, 413);
+
+  const info = sniffImage(bytes);
+  if (!info || !info.width || !info.height || info.width > MAX_AVATAR_PX || info.height > MAX_AVATAR_PX) {
+    return json(
+      { error: `Use a JPEG, PNG or WebP picture up to ${MAX_AVATAR_PX} x ${MAX_AVATAR_PX} pixels.`, code: "bad_image" },
+      415
+    );
+  }
+  const result = await userDirectory(env).setAvatar(token, info.type, bytes);
+  if (!result.ok) return json({ error: result.message, code: result.code }, result.status);
+  return json({ avatar: result.version });
+}
+
+async function removeAvatar(request, env) {
+  const result = await userDirectory(env).clearAvatar(getCookie(request, COOKIE));
+  if (!result.ok) return json({ error: result.message, code: result.code }, result.status);
+  return json({ avatar: null });
 }
 
 // ---------------------------------------------------------------------------
@@ -219,6 +374,14 @@ export class UserDirectory extends DurableObject {
         token_hash TEXT PRIMARY KEY,  -- SHA-256 of the cookie value; the token itself is never stored
         key        TEXT NOT NULL,
         expires    INTEGER NOT NULL
+      )
+    `);
+    this.sql.exec(`
+      CREATE TABLE IF NOT EXISTS avatars (
+        key     TEXT PRIMARY KEY,  -- lowercase username; at most one picture per account
+        type    TEXT NOT NULL,     -- image/jpeg, image/png or image/webp, as found by sniffImage
+        data    BLOB NOT NULL,
+        updated INTEGER NOT NULL   -- when it was set; doubles as the ETag and the cache-buster
       )
     `);
     this.sql.exec(`
@@ -310,14 +473,15 @@ export class UserDirectory extends DurableObject {
     if (typeof token !== "string" || token.length > 128) return null;
     const row = this.sql
       .exec(
-        `SELECT u.key AS key, u.name AS name FROM sessions s
+        `SELECT u.key AS key, u.name AS name, a.updated AS avatar FROM sessions s
          JOIN users u ON u.key = s.key
+         LEFT JOIN avatars a ON a.key = u.key
          WHERE s.token_hash = ? AND s.expires > ?`,
         await sha256Hex(token),
         Date.now()
       )
       .toArray()[0];
-    return row ? { key: row.key, name: row.name } : null;
+    return row ? { key: row.key, name: row.name, avatar: row.avatar ?? null } : null;
   }
 
   async logout(token) {
@@ -334,7 +498,50 @@ export class UserDirectory extends DurableObject {
       key,
       now + SESSION_MS
     );
-    return { ok: true, name, token };
+    return { ok: true, name, token, avatar: this.avatarVersion(key) };
+  }
+
+  // ---- Profile pictures ---------------------------------------------------
+  avatarVersion(key) {
+    const row = this.sql.exec("SELECT updated FROM avatars WHERE key = ?", key).toArray()[0];
+    return row ? row.updated : null;
+  }
+
+  async avatar(token, key) {
+    if (!(await this.whoami(token))) return { ok: false, status: 401 };
+    const row =
+      typeof key === "string" && key.length <= 32
+        ? this.sql.exec("SELECT type, data, updated FROM avatars WHERE key = ?", key).toArray()[0]
+        : null;
+    if (!row) return { ok: false, status: 404 };
+    return { ok: true, type: row.type, data: row.data, updated: row.updated };
+  }
+
+  async setAvatar(token, type, data) {
+    const session = await this.whoami(token);
+    if (!session) return fail("unauthorized", "Log in first.", 401);
+    const now = Date.now();
+    const bucket = `avatar:${session.key}`;
+    if (this.blockedFor(bucket, MAX_AVATAR_CHANGES, AVATAR_WINDOW_MS, now) > 0) {
+      return fail("throttled", "You've changed your picture too many times. Try again later.", 429);
+    }
+    this.bump(bucket, AVATAR_WINDOW_MS, now);
+    this.sql.exec(
+      `INSERT INTO avatars (key, type, data, updated) VALUES (?, ?, ?, ?)
+       ON CONFLICT(key) DO UPDATE SET type = excluded.type, data = excluded.data, updated = excluded.updated`,
+      session.key,
+      type,
+      data,
+      now
+    );
+    return { ok: true, version: now };
+  }
+
+  async clearAvatar(token) {
+    const session = await this.whoami(token);
+    if (!session) return fail("unauthorized", "Log in first.", 401);
+    this.sql.exec("DELETE FROM avatars WHERE key = ?", session.key);
+    return { ok: true };
   }
 
   userRow(key) {
@@ -380,11 +587,13 @@ export class UserDirectory extends DurableObject {
 //   client -> server  {type:"set_password", password}   owner only; signs everyone else out
 //   client -> server  {type:"remove_password"}          owner only; makes the room public
 //   client -> server  {type:"delete_room"}              owner only; wipes the room
+//   client -> server  {type:"avatar_updated"}           "I changed my picture"; the room tells everyone to look again
 //   server -> client  {type:"joined", private, owner}   then "history", "presence"
 //   server -> client  {type:"join_error", code, message}   socket is closed
 //   server -> client  {type:"room_updated", private, message}
 //   server -> client  {type:"kicked" | "room_deleted", by?, message}   socket is closed
 //   server -> client  {type:"settings_error", message}
+//   server -> client  {type:"avatar", cid, v}           that person's picture changed; v is its version (0 = none)
 //   server -> client  {type:"message" | "presence" | "error", ...}
 // A socket receives nothing about the room until its join succeeds.
 // ---------------------------------------------------------------------------
@@ -392,6 +601,7 @@ export class ChatRoom extends DurableObject {
   constructor(ctx, env) {
     super(ctx, env);
     this.sql = ctx.storage.sql;
+    this.avatarWaiting = new Set(); // sockets with a "picture changed" notice waiting out the gap
     this.sql.exec(`
       CREATE TABLE IF NOT EXISTS messages (
         id   INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -477,7 +687,36 @@ export class ChatRoom extends DurableObject {
         return this.removePassword(ws, meta);
       case "delete_room":
         return this.deleteRoom(ws, meta);
+      case "avatar_updated":
+        return this.avatarUpdated(ws, meta);
     }
+  }
+
+  // The picture itself lives in the account directory and is fetched over HTTP; this only tells the
+  // room to look again. Both the person (`cid`) and the version (`v`) come from the server, not from
+  // the client, so nobody can announce a change for someone else, and repeating a notice changes
+  // nothing: clients ignore a version they already have.
+  // Notices from one connection go out at most once per AVATAR_NOTICE_GAP_MS. One that comes too soon
+  // is held back rather than dropped, and only one is ever held: it reads the latest state when it
+  // fires, so it covers any further requests made while it waited.
+  async avatarUpdated(ws, meta) {
+    const wait = (meta.lastAvatar || 0) + AVATAR_NOTICE_GAP_MS - Date.now();
+    if (wait > 0) {
+      if (this.avatarWaiting.has(meta.sid)) return;
+      this.avatarWaiting.add(meta.sid);
+      try {
+        await new Promise((resolve) => setTimeout(resolve, wait));
+      } finally {
+        this.avatarWaiting.delete(meta.sid);
+      }
+    }
+    try {
+      ws.serializeAttachment({ ...(ws.deserializeAttachment() || meta), lastAvatar: Date.now() });
+    } catch {
+      return; // the socket closed while the notice was waiting
+    }
+    const version = await this.env.USERS.get(this.env.USERS.idFromName("global")).avatarVersion(meta.key);
+    this.broadcast({ type: "avatar", cid: meta.key, v: version ?? 0 });
   }
 
   postMessage(ws, meta, data) {
