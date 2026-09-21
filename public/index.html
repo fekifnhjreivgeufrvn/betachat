@@ -2,8 +2,21 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>betachat</title>
+
+  <!-- Installable web app (Add to Home Screen) -->
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#e4ebe8" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0f1715" media="(prefers-color-scheme: dark)">
+  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+  <link rel="icon" href="/icons/favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="betachat">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..700&display=swap" rel="stylesheet">
@@ -58,6 +71,9 @@
       flex-direction: column;
       width: min(100%, 760px);
       height: 100dvh;
+      /* viewport-fit=cover lets the page reach the screen edges; keep content clear of the notch in landscape */
+      padding-inline: env(safe-area-inset-left, 0px) env(safe-area-inset-right, 0px);
+      padding-top: env(safe-area-inset-top, 0px);
     }
     @media (min-width: 800px) {
       .app { border-inline: 1px solid var(--line); }
@@ -282,6 +298,39 @@
     }
     .composer textarea { flex: 1; min-width: 0; max-height: 140px; resize: none; }
 
+    /* "Add to Home Screen" prompt (iPhone and iPad only; see the script) */
+    .install {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.5rem 0.25rem 0.5rem 1rem;
+      background: var(--surface);
+      border-bottom: 1px solid var(--line);
+    }
+    .install-icon { flex: none; width: 2.5rem; height: 2.5rem; border-radius: 22%; }
+    .install-copy { flex: 1; min-width: 0; font-size: 0.9rem; line-height: 1.25; }
+    .install-copy strong { display: block; font-size: 0.95rem; }
+    .install-copy span { color: var(--muted); }
+    .install .btn { flex: none; padding: 0.45rem 0.9rem; font-size: 0.9rem; }
+    .install-close {
+      flex: none;
+      width: 2.75rem;
+      height: 2.75rem;
+      border: 0;
+      background: none;
+      color: var(--muted);
+      font: inherit;
+      font-size: 1.5rem;
+      line-height: 1;
+      cursor: pointer;
+    }
+    .install-close:hover { color: var(--ink); }
+    .steps { margin: 1rem 0 0; padding-left: 1.4rem; }
+    .steps li { margin: 0 0 0.75rem; padding-left: 0.2rem; }
+    .steps li::marker { font-weight: 700; color: var(--muted); }
+    .share-ico { display: inline-block; width: 1.25em; height: 1.25em; margin: 0 0.1em; vertical-align: -0.25em; }
+    #install-other p { margin: 0.5rem 0 0; }
+
     /* Room settings dialog */
     dialog {
       width: min(92vw, 28rem);
@@ -307,6 +356,16 @@
 </head>
 <body>
   <main class="app">
+
+    <aside class="install" id="install" aria-label="Add to Home Screen" hidden>
+      <img class="install-icon" src="/icons/icon-192.png" alt="" width="40" height="40">
+      <div class="install-copy">
+        <strong>Add betachat to your Home Screen</strong>
+        <span>Opens full screen, like an app.</span>
+      </div>
+      <button class="btn" type="button" id="install-how">Show me how</button>
+      <button class="install-close" type="button" id="install-dismiss" aria-label="Dismiss">&times;</button>
+    </aside>
 
     <section class="join" id="auth" hidden>
       <form id="auth-form" novalidate>
@@ -428,6 +487,33 @@
 
       <p class="form-error" id="profile-msg" role="status"></p>
       <button class="link close" type="button" id="profile-close">Close</button>
+    </div>
+  </dialog>
+
+  <dialog id="install-dialog" aria-labelledby="install-title">
+    <div class="dlg">
+      <h2 id="install-title">Add to Home Screen</h2>
+
+      <div id="install-safari" hidden>
+        <ol class="steps">
+          <li>
+            Tap the <strong>Share</strong> button
+            <svg class="share-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3"/><path d="M8.5 6.5 12 3l3.5 3.5"/><path d="M7 10H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2h-1"/></svg>
+            <span data-device="iphone">at the bottom of the screen.</span><span data-device="ipad">in the toolbar at the top right.</span>
+          </li>
+          <li>Tap <strong>Add to Home Screen</strong>. You may need to scroll down or tap <strong>View More</strong> to find it.</li>
+          <li>If you see an <strong>Open as Web App</strong> switch, leave it on. Then tap <strong>Add</strong>.</li>
+          <li>Open betachat from its new icon on your Home Screen.</li>
+        </ol>
+      </div>
+
+      <div id="install-other" hidden>
+        <p>Only Safari can add betachat to your Home Screen as an app. Copy the link, open Safari, paste it in, and then follow the prompt there.</p>
+        <button class="btn" type="button" id="install-copy">Copy link</button>
+      </div>
+
+      <p class="hint">Heads up: the Home Screen app keeps its own login, so you'll sign in once more the first time you open it.</p>
+      <button class="link close" type="button" id="install-close">Close</button>
     </div>
   </dialog>
 
@@ -643,6 +729,59 @@
       });
       renderAlertsButton();
 
+      // ---- Add to Home Screen (iPhone and iPad) ---------------------------
+      // On iOS, web push only works for a site that has been added to the Home Screen, and Safari
+      // has no install prompt of its own, so we show one: a slim banner plus a how-to dialog.
+      // It appears only on iPhone/iPad, only in a normal browser tab (never inside the installed
+      // app), and only once you're signed in. Dismissing it hides it for two weeks.
+      const ua = navigator.userAgent;
+      const isIPadOS = navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1; // iPadOS pretends to be a Mac
+      const isIOS = /iPhone|iPad|iPod/.test(ua) || isIPadOS;
+      const isIPad = /iPad/.test(ua) || isIPadOS;
+      const isStandalone = navigator.standalone === true || window.matchMedia("(display-mode: standalone)").matches;
+      // Other iOS browsers put their own name in the user agent, and in-app browsers leave out "Safari"
+      const isIOSSafari = /Safari\//.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS|OPT\/|DuckDuckGo|GSA\//.test(ua);
+
+      const INSTALL_KEY = "betachat:install-dismissed";
+      const INSTALL_SNOOZE_MS = 14 * 24 * 60 * 60 * 1000;
+      let installSnoozed = false;
+      try { installSnoozed = Date.now() - Number(localStorage.getItem(INSTALL_KEY)) < INSTALL_SNOOZE_MS; } catch {}
+      let currentView = "";
+
+      const installBanner = $("#install"), installDlg = $("#install-dialog");
+      const installSafari = $("#install-safari"), installOther = $("#install-other"), installCopy = $("#install-copy");
+
+      function renderInstall() {
+        installBanner.hidden = !(isIOS && !isStandalone && !installSnoozed && currentView && currentView !== "auth");
+      }
+
+      $("#install-dismiss").addEventListener("click", () => {
+        installSnoozed = true;
+        try { localStorage.setItem(INSTALL_KEY, String(Date.now())); } catch {}
+        renderInstall();
+      });
+
+      $("#install-how").addEventListener("click", () => {
+        installSafari.hidden = !isIOSSafari;
+        installOther.hidden = isIOSSafari;
+        installCopy.textContent = "Copy link";
+        installDlg.querySelectorAll("[data-device]").forEach((el) => {
+          el.hidden = el.dataset.device !== (isIPad ? "ipad" : "iphone");
+        });
+        installDlg.showModal();
+        $("#install-close").focus();
+      });
+
+      installCopy.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(location.origin);
+          installCopy.textContent = "Copied";
+        } catch {
+          installCopy.textContent = "Couldn't copy. Copy the address by hand.";
+        }
+      });
+      $("#install-close").addEventListener("click", () => installDlg.close());
+
       // ---- Avatars -------------------------------------------------------
       // A picture is fetched from /api/avatar/<username>. Until (or unless) it loads, the person's
       // initial is shown, so someone with no picture never produces a broken image.
@@ -813,6 +952,8 @@
       // ---- Views ---------------------------------------------------------
       function show(name) {
         for (const [key, el] of Object.entries(views)) el.hidden = key !== name;
+        currentView = name;
+        renderInstall();
       }
 
       let registering = false;
@@ -1373,6 +1514,11 @@
       $("#profile-close").addEventListener("click", () => profileDlg.close());
 
       // ---- Start ---------------------------------------------------------
+      // The service worker makes the site installable and shows an offline page with no connection
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));
+      }
+
       applyRoom();
       (async () => {
         try {
