@@ -2,21 +2,17 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>betachat</title>
-
-  <!-- Installable web app (Add to Home Screen) -->
-  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
   <meta name="theme-color" content="#e4ebe8" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#0f1715" media="(prefers-color-scheme: dark)">
-  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
-  <link rel="icon" href="/icons/favicon-32.png" sizes="32x32" type="image/png">
-  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="betachat">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..700&display=swap" rel="stylesheet">
@@ -71,12 +67,9 @@
       flex-direction: column;
       width: min(100%, 760px);
       height: 100dvh;
-      /* viewport-fit=cover lets the page reach the screen edges; keep content clear of the notch in landscape */
-      padding-inline: env(safe-area-inset-left, 0px) env(safe-area-inset-right, 0px);
-      padding-top: env(safe-area-inset-top, 0px);
     }
     @media (min-width: 800px) {
-      .app { border-inline: 1px solid var(--line); }
+      .app { border-inline: 1px solid var(--line); flex: 0 1 760px; min-width: 0; }
     }
 
     .sr {
@@ -129,6 +122,9 @@
       overflow-y: auto;
     }
     .join form { width: 100%; max-width: 30rem; margin: auto 0; }
+    .join-panel { width: 100%; max-width: 30rem; margin: auto 0; }
+    .join-panel form { margin: 0; }
+    .join h2 { margin: 1.5rem 0 0.4rem; font-size: 1.05rem; letter-spacing: -0.01em; }
     .join h1 {
       margin: 0 0 1rem;
       font-size: clamp(2.6rem, 11vw, 4.2rem);
@@ -143,11 +139,69 @@
     .me, .switch { margin: 0; color: var(--muted); }
     .switch { margin-top: 1rem; font-size: 0.9rem; }
     .me strong { color: var(--ink); }
-    .me + .lede { margin-top: 0.75rem; }
     .hint { margin: 0.4rem 0 0; font-size: 0.85rem; color: var(--muted); max-width: 44ch; }
     .form-error { margin: 1rem 0 0; font-size: 0.9rem; color: var(--danger); }
     .form-error:empty { display: none; }
     .form-error[data-kind="info"], .notice[data-kind="info"] { color: var(--muted); }
+
+    /* Rooms. On a wide screen this is a sidebar beside the chat; on a phone the same list sits above the
+       join form and the header's "Rooms" button opens it. Both lists are drawn by renderRooms(). */
+    .rail { display: none; }
+    .room-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.15rem; min-height: 0; overflow-y: auto; }
+    .room {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      width: 100%;
+      padding: 0.55rem 0.75rem;
+      border: 0;
+      border-radius: 12px;
+      background: none;
+      color: var(--ink);
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+    }
+    .room:hover { background: var(--bg); }
+    .room[aria-current="true"] { background: var(--mine); color: var(--mine-ink); }
+    .room-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .room svg { flex: none; opacity: 0.75; }
+
+    .my-rooms .room { min-height: 2.75rem; border: 1px solid var(--line); background: var(--surface); }
+    .my-rooms .room[aria-current="true"] { border-color: var(--mine); background: var(--mine); }
+
+    @media (min-width: 800px) {
+      .rail {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        flex: none;
+        width: 15rem;
+        height: 100dvh;
+        padding: 1rem 0.75rem;
+        border-left: 1px solid var(--line);
+        background: var(--surface);
+      }
+      .my-rooms, #switch-room { display: none; }
+    }
+    .wordmark { margin: 0; padding: 0.15rem 0.75rem 0; font-size: 1.15rem; font-weight: 700; letter-spacing: -0.02em; }
+    .rail-empty { margin: 0; padding: 0 0.75rem; font-size: 0.9rem; color: var(--muted); }
+    .rail-new {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.4rem;
+      margin-top: auto;
+      padding: 0.6rem 0.9rem;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: none;
+      color: var(--ink);
+      font: inherit;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .rail-new:hover { background: var(--bg); }
 
     /* Chat screen */
     .chat { flex: 1; min-height: 0; display: flex; flex-direction: column; }
@@ -192,6 +246,21 @@
     .status[data-state="connecting"] .dot { background: var(--accent); }
     .actions { display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; justify-content: flex-end; }
 
+    /* "Add to Home Screen" tip for iPhone and iPad, where notifications only work for an installed app */
+    .install-tip {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: 0.7rem 1rem;
+      border-bottom: 1px solid var(--line);
+      background: var(--surface);
+      font-size: 0.88rem;
+    }
+    .install-tip strong { display: block; }
+    .install-tip p { margin: 0.15rem 0 0; max-width: 62ch; color: var(--muted); }
+    .install-tip .link { flex: none; }
+
     .messages {
       flex: 1;
       min-height: 0;
@@ -200,7 +269,9 @@
       flex-direction: column;
       padding: 1rem;
     }
-    .empty { margin: auto; color: var(--muted); }
+    .empty { margin: auto; max-width: 32ch; text-align: center; color: var(--muted); }
+    .empty-note { display: block; margin-top: 0.6rem; font-size: 0.9rem; }
+    .empty-note strong { color: var(--ink); overflow-wrap: anywhere; }
 
     /* Profile pictures: a photo if the person set one, otherwise their initial on a colour picked from their name */
     .avatar {
@@ -298,39 +369,6 @@
     }
     .composer textarea { flex: 1; min-width: 0; max-height: 140px; resize: none; }
 
-    /* "Add to Home Screen" prompt (iPhone and iPad only; see the script) */
-    .install {
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
-      padding: 0.5rem 0.25rem 0.5rem 1rem;
-      background: var(--surface);
-      border-bottom: 1px solid var(--line);
-    }
-    .install-icon { flex: none; width: 2.5rem; height: 2.5rem; border-radius: 22%; }
-    .install-copy { flex: 1; min-width: 0; font-size: 0.9rem; line-height: 1.25; }
-    .install-copy strong { display: block; font-size: 0.95rem; }
-    .install-copy span { color: var(--muted); }
-    .install .btn { flex: none; padding: 0.45rem 0.9rem; font-size: 0.9rem; }
-    .install-close {
-      flex: none;
-      width: 2.75rem;
-      height: 2.75rem;
-      border: 0;
-      background: none;
-      color: var(--muted);
-      font: inherit;
-      font-size: 1.5rem;
-      line-height: 1;
-      cursor: pointer;
-    }
-    .install-close:hover { color: var(--ink); }
-    .steps { margin: 1rem 0 0; padding-left: 1.4rem; }
-    .steps li { margin: 0 0 0.75rem; padding-left: 0.2rem; }
-    .steps li::marker { font-weight: 700; color: var(--muted); }
-    .share-ico { display: inline-block; width: 1.25em; height: 1.25em; margin: 0 0.1em; vertical-align: -0.25em; }
-    #install-other p { margin: 0.5rem 0 0; }
-
     /* Room settings dialog */
     dialog {
       width: min(92vw, 28rem);
@@ -355,17 +393,17 @@
   </style>
 </head>
 <body>
-  <main class="app">
+  <nav class="rail" id="rail" aria-label="Your rooms" hidden>
+    <p class="wordmark">betachat</p>
+    <ul class="room-list" data-room-list></ul>
+    <p class="rail-empty" id="rail-empty" hidden>Rooms you join will show up here.</p>
+    <button class="rail-new" type="button" id="rail-new">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+      Join or create a room
+    </button>
+  </nav>
 
-    <aside class="install" id="install" aria-label="Add to Home Screen" hidden>
-      <img class="install-icon" src="/icons/icon-192.png" alt="" width="40" height="40">
-      <div class="install-copy">
-        <strong>Add betachat to your Home Screen</strong>
-        <span>Opens full screen, like an app.</span>
-      </div>
-      <button class="btn" type="button" id="install-how">Show me how</button>
-      <button class="install-close" type="button" id="install-dismiss" aria-label="Dismiss">&times;</button>
-    </aside>
+  <main class="app">
 
     <section class="join" id="auth" hidden>
       <form id="auth-form" novalidate>
@@ -386,21 +424,30 @@
     </section>
 
     <section class="join" id="join" hidden>
-      <form id="join-form" novalidate>
+      <div class="join-panel">
         <h1>betachat</h1>
         <p class="me">Signed in as <span class="avatar sm" id="me-avatar" aria-hidden="true"></span><strong id="me-name"></strong> · <button class="link profile-open" type="button">Profile</button> · <button class="link" type="button" id="logout">Log out</button></p>
-        <p class="lede">Pick a room. Add a password to make a new room private.</p>
 
-        <label for="room-input">Room</label>
-        <input id="room-input" maxlength="32" autocomplete="off" autocapitalize="none" spellcheck="false">
+        <section class="my-rooms" id="my-rooms" aria-labelledby="my-rooms-title" hidden>
+          <h2 id="my-rooms-title">Your rooms</h2>
+          <ul class="room-list" data-room-list></ul>
+        </section>
 
-        <label for="pw-input">Password (optional)</label>
-        <input id="pw-input" type="password" maxlength="128" autocomplete="off" aria-describedby="pw-hint">
-        <p class="hint" id="pw-hint">Leave blank for a public room. Set one to make a new private room, or enter it to join a private room. If you created the room, you don't need it.</p>
+        <form id="join-form" novalidate>
+          <h2>Join or create a room</h2>
+          <p class="lede">Enter a room name. If it doesn't exist yet, it's created. Add a password to make a new room private.</p>
 
-        <p class="form-error" id="join-error" role="alert"></p>
-        <button class="btn" type="submit" id="join-btn">Join room</button>
-      </form>
+          <label for="room-input">Room</label>
+          <input id="room-input" maxlength="32" autocomplete="off" autocapitalize="none" spellcheck="false">
+
+          <label for="pw-input">Password (optional)</label>
+          <input id="pw-input" type="password" maxlength="128" autocomplete="off" aria-describedby="pw-hint">
+          <p class="hint" id="pw-hint">Leave blank for a public room. Set one to make a new private room, or enter it to join a private room. If you created the room, you don't need it.</p>
+
+          <p class="form-error" id="join-error" role="alert"></p>
+          <button class="btn" type="submit" id="join-btn">Join room</button>
+        </form>
+      </div>
     </section>
 
     <section class="chat" id="chat" hidden>
@@ -424,12 +471,23 @@
           <button class="link profile-open" type="button">Profile</button>
           <button class="link" type="button" id="copy">Copy invite link</button>
           <button class="link" type="button" id="alerts-btn" aria-pressed="false" title="Sound and a desktop notification for new messages while this tab is in the background. The unread count in the tab title is always on.">Alerts: off</button>
-          <button class="link" type="button" id="switch-room">Switch room</button>
+          <button class="link" type="button" id="switch-room">Rooms</button>
         </div>
       </header>
 
+      <aside class="install-tip" id="install-tip" aria-label="Install betachat" hidden>
+        <div>
+          <strong>Get notified on your iPhone or iPad</strong>
+          <p>Add betachat to your Home Screen, open it from there, then turn on Alerts. In Safari, tap the Share button (if you don't see it, tap ••• first), choose Add to Home Screen, and leave "Open as Web App" on. Needs iOS 16.4 or later.</p>
+        </div>
+        <button class="link" type="button" id="install-dismiss">Not now</button>
+      </aside>
+
       <div class="messages" id="messages" role="log" aria-live="polite" aria-label="Messages">
-        <p class="empty" id="empty">No messages yet. Say hello.</p>
+        <p class="empty" id="empty">
+          <span id="empty-main">No messages yet. Say hello.</span>
+          <span class="empty-note" id="empty-note" hidden>You just created <strong id="empty-room"></strong>. If you meant to join a room that already exists, check the spelling. <button class="link" type="button" id="empty-pick">Choose another room</button></span>
+        </p>
       </div>
 
       <p class="notice" id="notice" role="status"></p>
@@ -490,33 +548,6 @@
     </div>
   </dialog>
 
-  <dialog id="install-dialog" aria-labelledby="install-title">
-    <div class="dlg">
-      <h2 id="install-title">Add to Home Screen</h2>
-
-      <div id="install-safari" hidden>
-        <ol class="steps">
-          <li>
-            Tap the <strong>Share</strong> button
-            <svg class="share-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3"/><path d="M8.5 6.5 12 3l3.5 3.5"/><path d="M7 10H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2h-1"/></svg>
-            <span data-device="iphone">at the bottom of the screen.</span><span data-device="ipad">in the toolbar at the top right.</span>
-          </li>
-          <li>Tap <strong>Add to Home Screen</strong>. You may need to scroll down or tap <strong>View More</strong> to find it.</li>
-          <li>If you see an <strong>Open as Web App</strong> switch, leave it on. Then tap <strong>Add</strong>.</li>
-          <li>Open betachat from its new icon on your Home Screen.</li>
-        </ol>
-      </div>
-
-      <div id="install-other" hidden>
-        <p>Only Safari can add betachat to your Home Screen as an app. Copy the link, open Safari, paste it in, and then follow the prompt there.</p>
-        <button class="btn" type="button" id="install-copy">Copy link</button>
-      </div>
-
-      <p class="hint">Heads up: the Home Screen app keeps its own login, so you'll sign in once more the first time you open it.</p>
-      <button class="link close" type="button" id="install-close">Close</button>
-    </div>
-  </dialog>
-
   <script>
     (() => {
       const $ = (sel) => document.querySelector(sel);
@@ -562,7 +593,10 @@
       // ---- State ---------------------------------------------------------
       let me = "";    // username as registered
       let myKey = ""; // lowercase; the server puts this in `cid` on my messages
-      let room = cleanRoom(new URLSearchParams(location.search).get("room"));
+      // The address wins; otherwise the room you were last in (so the Home Screen icon reopens it)
+      let lastRoom = null;
+      try { lastRoom = localStorage.getItem("betachat:room"); } catch {}
+      let room = cleanRoom(new URLSearchParams(location.search).get("room") || lastRoom);
       let password = session.get(`chat:pw:${room}`) || "";
       let isPrivate = false;
       let isOwner = false;
@@ -587,21 +621,135 @@
       const profileMsg = $("#profile-msg");
       const typingDots = $("#typing-dots"), typingText = $("#typing-text");
       const alertsBtn = $("#alerts-btn");
+      const rail = $("#rail"), railEmpty = $("#rail-empty"), myRoomsBox = $("#my-rooms");
+      const emptyNote = $("#empty-note"), emptyRoom = $("#empty-room");
 
       function applyRoom() {
         updateTitle();
         roomTitle.textContent = `#${room}`;
         badgeEl.hidden = !isPrivate;
         settingsBtn.hidden = !isOwner;
+        renderRooms();
+      }
+
+      // ---- Your rooms --------------------------------------------------------
+      // The rooms you've been in, kept on this device for this account (a room name isn't a secret, and
+      // the passwords stay in sessionStorage as before). There is no server-side list of rooms, so this is
+      // also why a room shows up here only once it has something in it: a room you just made by typing a
+      // name is empty and new, and if that name was a typo it leaves nothing behind.
+      const MAX_ROOMS = 30;
+      let roomList = [];  // [{ name, private, ts }]
+      let renderedRooms = null;
+      let justCreated = false; // this join made the room (and the person asked for it), so say so in the empty state
+      const roomsStorageKey = () => `betachat:rooms:${myKey}`;
+      const LOCK_ICON = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg><span class="sr">(private)</span>';
+
+      function loadRooms() {
+        roomList = [];
+        try {
+          const saved = JSON.parse(localStorage.getItem(roomsStorageKey()) || "[]");
+          if (Array.isArray(saved)) {
+            roomList = saved
+              .filter((r) => r && typeof r.name === "string" && cleanRoom(r.name) === r.name)
+              .map((r) => ({ name: r.name, private: !!r.private, ts: Number(r.ts) || 0 }));
+          }
+        } catch {}
+      }
+
+      function saveRooms() {
+        try { localStorage.setItem(roomsStorageKey(), JSON.stringify(roomList)); } catch {}
+      }
+
+      function rememberRoom() {
+        if (!myKey) return;
+        const entry = roomList.find((r) => r.name === room);
+        if (entry) {
+          entry.private = isPrivate;
+          entry.ts = Date.now();
+        } else {
+          roomList.push({ name: room, private: isPrivate, ts: Date.now() });
+          if (roomList.length > MAX_ROOMS) roomList = roomList.sort((a, b) => b.ts - a.ts).slice(0, MAX_ROOMS);
+        }
+        saveRooms();
+        renderRooms();
+      }
+
+      function forgetRoom(name) {
+        if (!roomList.some((r) => r.name === name)) return;
+        roomList = roomList.filter((r) => r.name !== name);
+        saveRooms();
+        renderRooms();
+      }
+
+      // The room's lock can change while I'm in it (the owner sets or removes a password)
+      function syncRoomLock() {
+        const entry = roomList.find((r) => r.name === room);
+        if (entry && entry.private !== isPrivate) {
+          entry.private = isPrivate;
+          saveRooms();
+        }
+      }
+
+      // Alphabetical, so the list holds still while you move between rooms. The room you're in is always
+      // there, even before it has been kept.
+      function visibleRooms() {
+        const list = roomList.map((r) => ({ name: r.name, private: r.private }));
+        if (joined && !list.some((r) => r.name === room)) list.push({ name: room, private: isPrivate });
+        return list.sort((a, b) => a.name.localeCompare(b.name));
+      }
+
+      function makeRoomRow(r) {
+        const li = document.createElement("li");
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "room";
+        button.dataset.room = r.name;
+        const name = document.createElement("span");
+        name.className = "room-name";
+        name.textContent = `#${r.name}`; // textContent, like everything else that comes from a name
+        button.append(name);
+        if (r.private) button.insertAdjacentHTML("beforeend", LOCK_ICON); // fixed markup, no user data
+        li.append(button);
+        return li;
+      }
+
+      // Draws the list in both places (sidebar, and above the join form on a phone). It only rebuilds the
+      // rows when the list itself changed, so moving between rooms doesn't drop keyboard focus.
+      function renderRooms() {
+        const list = visibleRooms();
+        const signature = list.map((r) => `${r.name}${r.private ? "*" : ""}`).join(",");
+        const lists = [...document.querySelectorAll("[data-room-list]")];
+
+        if (signature !== renderedRooms) {
+          renderedRooms = signature;
+          const active = document.activeElement;
+          const focusName = active && active.classList.contains("room") ? active.dataset.room : "";
+          const focusIn = focusName ? lists.indexOf(active.closest("[data-room-list]")) : -1;
+          lists.forEach((ul) => ul.replaceChildren(...list.map(makeRoomRow)));
+          if (focusIn >= 0) {
+            const again = lists[focusIn].querySelector(`.room[data-room="${focusName}"]`);
+            if (again) again.focus();
+          }
+        }
+
+        lists.forEach((ul) =>
+          ul.querySelectorAll(".room").forEach((button) => {
+            if ((joined || awaitingJoin) && button.dataset.room === room) button.setAttribute("aria-current", "true");
+            else button.removeAttribute("aria-current");
+          })
+        );
+        railEmpty.hidden = list.length > 0;
+        myRoomsBox.hidden = list.length === 0;
       }
 
       // ---- Alerts for messages that arrive while you're looking elsewhere --
-      // Three things, for messages from other people while this tab is hidden or not focused:
+      // Four layers, from "always" to "needs your say-so":
       //   1. an unread count in the tab title, e.g. "(3) #general – betachat" (always on)
-      //   2. a short sound      } only when "Alerts" is on; the choice is remembered on this device
-      //   3. a desktop notification (only where the browser allows it and you agreed)
-      // iPhone and iPad Safari can't show page notifications (that needs the site installed to the
-      // Home Screen plus real push), so there you get the title count and the sound.
+      //   2. a short sound                            } only when "Alerts" is on;
+      //   3. a notification while the page is open    } the choice is remembered on this device
+      //   4. a push notification when betachat is closed: the server sends it to the browser's push
+      //      service, which wakes public/sw.js. That needs the server's push keys (see NOTIFICATIONS.md) and, on
+      //      iPhone and iPad, betachat added to the Home Screen and opened from there.
       // Note: `unread` must be declared before the first applyRoom() call at the bottom of this script.
       let unread = 0;
       let alertsOn = false;
@@ -610,6 +758,17 @@
 
       const isAway = () => document.hidden || !document.hasFocus();
       const canNotify = () => "Notification" in window;
+      const notificationTag = () => `betachat:${room}`;
+
+      // What kind of device this is decides what can work
+      const IS_IOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+      const IS_STANDALONE = navigator.standalone === true || (!!window.matchMedia && window.matchMedia("(display-mode: standalone)").matches);
+      const PUSH_SUPPORTED = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+
+      let swReg = null;           // the service worker, once it is ready
+      let vapidKey = null;        // the server's public push key; null until known, or if the server has push switched off
+      let pushSub = null;         // this device's subscription with the browser's push service
+      let pushRegistered = false; // ...and the room I'm in has it, so it will push to me when I'm away
 
       function updateTitle() {
         document.title = `${unread ? `(${unread > 99 ? "99+" : unread}) ` : ""}#${room} – betachat`;
@@ -665,17 +824,31 @@
         });
       }
 
-      function showNotification(m) {
+      // A notification made by the open page. Goes through the service worker where there is one (the
+      // only way on Chrome for Android), and the plain Notification constructor otherwise.
+      async function showNotification(m) {
         if (!canNotify() || Notification.permission !== "granted") return;
+        if (pushRegistered && document.hidden) return; // the server is sending this one as a push
+        const chars = Array.from(m.text);
+        const title = `${m.name} in #${room}`;
+        const options = {
+          body: chars.length > 140 ? `${chars.slice(0, 139).join("")}…` : m.text,
+          tag: notificationTag(), // a new message replaces the previous notification for this room
+          renotify: true,
+          silent: true, // our own sound plays, so the system shouldn't add a second one
+          icon: "/icons/icon-192.png",
+          data: { room },
+        };
         try {
-          const body = m.text.length > 140 ? `${m.text.slice(0, 139)}…` : m.text;
-          // Same tag: a new message replaces the previous notification for this room instead of stacking up.
-          // silent: our own sound plays, so the system shouldn't add a second one.
-          const n = new Notification(`${m.name} in #${room}`, { body, tag: `betachat:${room}`, renotify: true, silent: true });
-          n.onclick = () => { window.focus(); n.close(); };
-          setTimeout(() => n.close(), 10000);
-          lastNotification = n;
-        } catch {} // e.g. Chrome on Android only allows notifications through a service worker
+          if (swReg) {
+            await swReg.showNotification(title, options);
+          } else {
+            const n = new Notification(title, options);
+            n.onclick = () => { window.focus(); n.close(); };
+            setTimeout(() => n.close(), 10000);
+            lastNotification = n;
+          }
+        } catch {}
       }
 
       // Called for every live message from someone else (not for history loaded on join)
@@ -688,17 +861,129 @@
         showNotification(m);
       }
 
-      // Back on the page: the count and any notification are stale
-      function markSeen() {
-        if (isAway()) return;
-        if (unread) clearUnread();
+      function closeNotifications() {
         if (lastNotification) {
           try { lastNotification.close(); } catch {}
           lastNotification = null;
         }
+        if (swReg) swReg.getNotifications({ tag: notificationTag() }).then((list) => list.forEach((n) => n.close())).catch(() => {});
       }
-      document.addEventListener("visibilitychange", markSeen);
+
+      // Back on the page: the count and any notification (including pushed ones) are stale
+      function markSeen() {
+        if (isAway()) return;
+        if (unread) clearUnread();
+        closeNotifications();
+      }
+
+      // Tell the room whether this tab is hidden. A hidden tab counts as "away", so the server sends a push
+      // instead of trusting a socket that a phone may have frozen without closing.
+      function sendAway(away = document.hidden) {
+        if (joined && ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "away", away }));
+      }
+
+      document.addEventListener("visibilitychange", () => { sendAway(); markSeen(); });
       window.addEventListener("focus", markSeen);
+      window.addEventListener("pagehide", () => sendAway(true));
+
+      // ---- Push: this device <-> the browser's push service <-> the room ---
+      const keyBytes = (b64u) => {
+        const b64 = b64u.replace(/-/g, "+").replace(/_/g, "/");
+        return Uint8Array.from(atob(b64 + "=".repeat((4 - (b64.length % 4)) % 4)), (c) => c.charCodeAt(0));
+      };
+
+      // Once at startup, with no prompts: get the service worker and the server's key, and pick an
+      // existing subscription back up if Alerts was already on.
+      async function startPush() {
+        if ("serviceWorker" in navigator) {
+          try {
+            await navigator.serviceWorker.register("/sw.js");
+            swReg = await navigator.serviceWorker.ready;
+          } catch { swReg = null; }
+        }
+        try {
+          const { ok, data } = await api("/api/push-key");
+          if (ok && typeof data.key === "string") vapidKey = data.key;
+        } catch {}
+        if (alertsOn) {
+          await ensureSubscription(false);
+          registerPush();
+        }
+      }
+
+      // Works out what this device can do and gets a subscription if it can. `mayPrompt` is true only
+      // inside a click, because browsers refuse to ask for permission any other way.
+      // Returns "push" | "off" | "denied" | "needs-install" | "unsupported".
+      async function ensureSubscription(mayPrompt) {
+        if (IS_IOS && !IS_STANDALONE && !PUSH_SUPPORTED) return "needs-install";
+        if (!canNotify()) return "unsupported";
+        if (Notification.permission === "default" && mayPrompt) {
+          try { await Notification.requestPermission(); } catch {}
+        }
+        if (Notification.permission === "denied") return "denied";
+        if (Notification.permission !== "granted") return "off";
+        if (!PUSH_SUPPORTED || !swReg || !vapidKey) return "off"; // page-open notifications only
+        try {
+          const wanted = keyBytes(vapidKey);
+          let sub = await swReg.pushManager.getSubscription();
+          if (sub) {
+            // A subscription made with a different key (the server's keys were replaced) can't be used
+            const have = sub.options && sub.options.applicationServerKey ? new Uint8Array(sub.options.applicationServerKey) : null;
+            if (!have || have.length !== wanted.length || have.some((b, i) => b !== wanted[i])) {
+              await sub.unsubscribe();
+              sub = null;
+            }
+          }
+          pushSub = sub || (await swReg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: wanted }));
+          return "push";
+        } catch {
+          return "off";
+        }
+      }
+
+      // Give this device's subscription to the room I'm in. Safe to repeat.
+      function registerPush() {
+        if (!alertsOn || !pushSub || !joined || !ws || ws.readyState !== WebSocket.OPEN) return;
+        ws.send(JSON.stringify({ type: "push_subscribe", subscription: pushSub.toJSON() }));
+        pushRegistered = true;
+      }
+
+      // Every (re)join: make sure this device is registered for the room
+      async function syncPush() {
+        if (!alertsOn) return;
+        if (!pushSub) await ensureSubscription(false);
+        registerPush();
+      }
+
+      // Stop notifications about the room I'm leaving
+      function unregisterPush() {
+        if (pushSub && joined && ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: "push_unsubscribe", endpoint: pushSub.endpoint }));
+        }
+        pushRegistered = false;
+      }
+
+      // Cancel this device's subscription altogether (Alerts turned off, or logging out)
+      async function dropPush() {
+        unregisterPush();
+        const sub = pushSub;
+        pushSub = null;
+        if (sub) { try { await sub.unsubscribe(); } catch {} }
+      }
+
+      // ---- The Alerts button -----------------------------------------------
+      const alertsSummary = (outcome) => {
+        switch (outcome) {
+          case "push": return "Alerts are on. You'll be notified of new messages even when betachat is closed.";
+          case "denied": return "Alerts are on with sound and an unread count. Notifications are blocked for this site in your browser settings.";
+          case "needs-install": return "Alerts are on with sound and an unread count. To be notified when the app is closed, add betachat to your Home Screen first.";
+          case "unsupported": return "Alerts are on with sound and an unread count. This browser can't show notifications.";
+          default:
+            return canNotify() && Notification.permission === "granted"
+              ? "Alerts are on: sound, an unread count and notifications while betachat is open."
+              : "Alerts are on with sound and an unread count.";
+        }
+      };
 
       function renderAlertsButton() {
         alertsBtn.textContent = `Alerts: ${alertsOn ? "on" : "off"}`;
@@ -709,78 +994,39 @@
         alertsOn = !alertsOn;
         try { localStorage.setItem("betachat:alerts", alertsOn ? "1" : "0"); } catch {}
         renderAlertsButton();
-        if (!alertsOn) { notify("Alerts are off. The unread count in the tab title stays on.", "info"); return; }
-
-        await unlockAudio();
-        beep(); // so you hear right away what it will sound like
-        if (!canNotify()) {
-          notify("Alerts are on: sound and an unread count in the tab title. This browser can't show notifications.", "info");
+        if (!alertsOn) {
+          await dropPush();
+          notify("Alerts are off. The unread count in the tab title stays on.", "info");
           return;
         }
-        if (Notification.permission === "default") {
-          try { await Notification.requestPermission(); } catch {}
-        }
-        notify(
-          Notification.permission === "granted"
-            ? "Alerts are on: sound, a notification and an unread count while this tab is in the background."
-            : "Alerts are on: sound and an unread count. Notifications are blocked for this site in your browser settings.",
-          "info"
-        );
+        await unlockAudio();
+        beep(); // so you hear right away what it will sound like
+        const outcome = await ensureSubscription(true);
+        if (outcome === "push") registerPush();
+        notify(alertsSummary(outcome), "info", 8000);
+        if (outcome === "needs-install") showInstallTip();
       });
       renderAlertsButton();
 
-      // ---- Add to Home Screen (iPhone and iPad) ---------------------------
-      // On iOS, web push only works for a site that has been added to the Home Screen, and Safari
-      // has no install prompt of its own, so we show one: a slim banner plus a how-to dialog.
-      // It appears only on iPhone/iPad, only in a normal browser tab (never inside the installed
-      // app), and only once you're signed in. Dismissing it hides it for two weeks.
-      const ua = navigator.userAgent;
-      const isIPadOS = navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1; // iPadOS pretends to be a Mac
-      const isIOS = /iPhone|iPad|iPod/.test(ua) || isIPadOS;
-      const isIPad = /iPad/.test(ua) || isIPadOS;
-      const isStandalone = navigator.standalone === true || window.matchMedia("(display-mode: standalone)").matches;
-      // Other iOS browsers put their own name in the user agent, and in-app browsers leave out "Safari"
-      const isIOSSafari = /Safari\//.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS|OPT\/|DuckDuckGo|GSA\//.test(ua);
+      // ---- "Add to Home Screen" tip (iPhone and iPad only) -------------------
+      // Web push on iOS exists only for a site added to the Home Screen and opened from there, so the
+      // page says so, once in a while, until they've done it or waved it away.
+      const installTip = $("#install-tip");
+      const TIP_HIDDEN_UNTIL = "betachat:install-tip-until";
 
-      const INSTALL_KEY = "betachat:install-dismissed";
-      const INSTALL_SNOOZE_MS = 14 * 24 * 60 * 60 * 1000;
-      let installSnoozed = false;
-      try { installSnoozed = Date.now() - Number(localStorage.getItem(INSTALL_KEY)) < INSTALL_SNOOZE_MS; } catch {}
-      let currentView = "";
+      function showInstallTip() {
+        if (IS_IOS && !IS_STANDALONE) installTip.hidden = false;
+      }
 
-      const installBanner = $("#install"), installDlg = $("#install-dialog");
-      const installSafari = $("#install-safari"), installOther = $("#install-other"), installCopy = $("#install-copy");
-
-      function renderInstall() {
-        installBanner.hidden = !(isIOS && !isStandalone && !installSnoozed && currentView && currentView !== "auth");
+      function maybeShowInstallTip() {
+        try { if (Number(localStorage.getItem(TIP_HIDDEN_UNTIL)) > Date.now()) return; } catch {}
+        showInstallTip();
       }
 
       $("#install-dismiss").addEventListener("click", () => {
-        installSnoozed = true;
-        try { localStorage.setItem(INSTALL_KEY, String(Date.now())); } catch {}
-        renderInstall();
+        installTip.hidden = true;
+        try { localStorage.setItem(TIP_HIDDEN_UNTIL, String(Date.now() + 14 * 24 * 60 * 60 * 1000)); } catch {} // ask again in two weeks
       });
-
-      $("#install-how").addEventListener("click", () => {
-        installSafari.hidden = !isIOSSafari;
-        installOther.hidden = isIOSSafari;
-        installCopy.textContent = "Copy link";
-        installDlg.querySelectorAll("[data-device]").forEach((el) => {
-          el.hidden = el.dataset.device !== (isIPad ? "ipad" : "iphone");
-        });
-        installDlg.showModal();
-        $("#install-close").focus();
-      });
-
-      installCopy.addEventListener("click", async () => {
-        try {
-          await navigator.clipboard.writeText(location.origin);
-          installCopy.textContent = "Copied";
-        } catch {
-          installCopy.textContent = "Couldn't copy. Copy the address by hand.";
-        }
-      });
-      $("#install-close").addEventListener("click", () => installDlg.close());
 
       // ---- Avatars -------------------------------------------------------
       // A picture is fetched from /api/avatar/<username>. Until (or unless) it loads, the person's
@@ -924,6 +1170,7 @@
         listEl.querySelectorAll(".msg").forEach((el) => el.remove());
         lastMsg = null;
         emptyEl.hidden = false;
+        emptyNote.hidden = true;
         onlineEl.textContent = "";
         clearTyping();
       }
@@ -931,15 +1178,20 @@
       function showHistory(messages) {
         clearMessages();
         emptyEl.hidden = messages.length > 0;
+        // A new, empty room that the person asked for by name. Easy to miss a typo otherwise: it looks
+        // exactly like a room whose messages have vanished.
+        emptyRoom.textContent = `#${room}`;
+        emptyNote.hidden = !justCreated;
+        justCreated = false;
         messages.forEach((m) => renderMessage(m, true));
       }
 
       let noticeTimer;
-      function notify(text, kind = "error") {
+      function notify(text, kind = "error", ms = 4000) {
         noticeEl.dataset.kind = kind;
         noticeEl.textContent = text;
         clearTimeout(noticeTimer);
-        noticeTimer = setTimeout(() => (noticeEl.textContent = ""), 4000);
+        noticeTimer = setTimeout(() => (noticeEl.textContent = ""), ms);
       }
 
       function setStatus(state) {
@@ -952,8 +1204,8 @@
       // ---- Views ---------------------------------------------------------
       function show(name) {
         for (const [key, el] of Object.entries(views)) el.hidden = key !== name;
-        currentView = name;
-        renderInstall();
+        rail.hidden = name === "auth"; // (only wide screens ever show it)
+        renderRooms();
       }
 
       let registering = false;
@@ -979,6 +1231,8 @@
         authUser.focus();
       }
 
+      // `focusEl` null means "wherever suits": the room name box on a wide screen, but on a phone the list
+      // (an open keyboard would cover it), unless there are no rooms to pick from yet.
       function showJoin(message = "", focusEl = roomInput) {
         show("join");
         roomInput.value = room;
@@ -986,8 +1240,18 @@
         joinError.textContent = message;
         joinBtn.disabled = false;
         joinBtn.textContent = "Join room";
+        if (!focusEl) {
+          const wide = window.matchMedia("(min-width: 800px)").matches;
+          focusEl = (!wide && (myRoomsBox.querySelector('.room[aria-current="true"]') || myRoomsBox.querySelector(".room"))) || roomInput;
+        }
         focusEl.focus();
         if (focusEl.type === "text") focusEl.select();
+      }
+
+      // "Rooms" (phone) and "Join or create a room" (sidebar): the list, and a blank form for a room that isn't in it
+      function openRoomPicker() {
+        showJoin("", null);
+        roomInput.value = pwInput.value = "";
       }
 
       function showChat() {
@@ -1002,6 +1266,7 @@
       function disconnect() {
         clearTimeout(timer);
         joined = false;
+        pushRegistered = false;
         resetMyTyping();
         if (ws) {
           const old = ws;
@@ -1014,9 +1279,18 @@
         joined = true;
         blocked = false;
         retry = 0;
+        try { localStorage.setItem("betachat:room", room); } catch {}
+        if (document.hidden) sendAway();
+        syncPush();
+        maybeShowInstallTip();
         isPrivate = !!data.private;
         isOwner = !!data.owner;
         if (isPrivate && password) session.set(`chat:pw:${room}`, password);
+        // A room made by this very join is new and empty. It goes on the list once someone posts in it, and
+        // one that was on the list but no longer existed (it was deleted) comes off.
+        justCreated = !!data.created && awaitingJoin;
+        if (data.created) forgetRoom(room);
+        else rememberRoom();
         applyRoom();
         setStatus("open");
         joinError.textContent = "";
@@ -1024,6 +1298,7 @@
         if (awaitingJoin) {
           awaitingJoin = false;
           showChat();
+          if (rail.contains(document.activeElement)) textEl.focus(); // picked from the sidebar: type next
         }
       }
 
@@ -1067,6 +1342,7 @@
 
       function onRoomUpdated(data) {
         isPrivate = !!data.private;
+        syncRoomLock();
         if (!isPrivate) {
           password = "";
           session.remove(`chat:pw:${room}`);
@@ -1093,6 +1369,7 @@
 
       // Called when a session may have ended (logged out here, or the cookie expired)
       function resetSession(message = "") {
+        dropPush(); // before disconnect(), while the socket can still say so
         disconnect();
         clearMessages();
         session.clearPasswords();
@@ -1100,6 +1377,7 @@
         if (profileDlg.open) profileDlg.close();
         avatarVersions.clear();
         myAvatar = null;
+        roomList = [];
         me = myKey = password = pendingPassword = "";
         isPrivate = isOwner = blocked = awaitingJoin = false;
         unread = 0;
@@ -1130,6 +1408,7 @@
               renderMessage(data.message, data.message.cid === myKey);
               setTyping(data.message.cid, "", false); // they sent it, so they're done typing
               if (data.message.cid !== myKey) onIncoming(data.message);
+              if (!roomList.some((r) => r.name === room)) rememberRoom(); // the room now has something in it
               break;
             case "typing":
               if (typeof data.cid === "string" && typeof data.name === "string" && data.cid !== myKey) {
@@ -1145,6 +1424,7 @@
               break;
             case "kicked": leaveRoom(data.message, pwInput); break;
             case "room_deleted":
+              forgetRoom(room);
               leaveRoom(data.by && data.by.toLowerCase() === myKey ? `#${room} was deleted.` : data.message, roomInput);
               break;
           }
@@ -1153,6 +1433,7 @@
         socket.onclose = async () => {
           if (socket !== ws) return;
           joined = false;
+          pushRegistered = false;
           setStatus("closed");
           if (blocked) return;
           // The server refuses the socket outright once the login has expired, so check that before retrying
@@ -1182,6 +1463,7 @@
         myKey = username.toLowerCase();
         meName.textContent = username;
         myAvatar = avatar || null;
+        loadRooms();
         avatarVersions.clear();
         if (myAvatar) avatarVersions.set(myKey, myAvatar);
         fillAvatar(meAvatar, myKey, me);
@@ -1227,10 +1509,8 @@
       });
 
       // ---- Actions -------------------------------------------------------
-      joinForm.addEventListener("submit", (event) => {
-        event.preventDefault();
-        const newRoom = cleanRoom(roomInput.value);
-        const newPassword = pwInput.value;
+      // Go to a room: from the join form, or from a row in the list of rooms
+      function enterRoom(newRoom, newPassword) {
         joinError.textContent = "";
 
         // Same room, same password, still connected: nothing to redo
@@ -1239,24 +1519,45 @@
           return;
         }
 
+        if (newRoom !== room) unregisterPush(); // notifications follow the room you're in
         disconnect();
         clearMessages(); // never show one room's messages under another room's name
+        emptyEl.hidden = true; // ...and don't call it empty while its history is still on the way
         room = newRoom;
         password = newPassword;
         isPrivate = isOwner = false;
         unread = 0;
-        history.replaceState(null, "", `?room=${encodeURIComponent(room)}`);
-        applyRoom();
-
         blocked = false;
         retry = 0;
         awaitingJoin = true;
+        history.replaceState(null, "", `?room=${encodeURIComponent(room)}`);
+        applyRoom();
+
         joinBtn.disabled = true;
         joinBtn.textContent = "Joining…";
         connect();
+      }
+
+      joinForm.addEventListener("submit", (event) => {
+        event.preventDefault();
+        if (!roomInput.value.trim()) {
+          joinError.textContent = "Enter a room name.";
+          roomInput.focus();
+          return;
+        }
+        enterRoom(cleanRoom(roomInput.value), pwInput.value);
       });
 
-      $("#switch-room").addEventListener("click", () => showJoin());
+      // A row in either list of rooms. A private room uses the password this tab already has; if there
+      // isn't one, the server says so and the form asks for it.
+      document.addEventListener("click", (event) => {
+        const row = event.target.closest && event.target.closest(".room");
+        if (row) enterRoom(row.dataset.room, session.get(`chat:pw:${row.dataset.room}`) || "");
+      });
+
+      $("#switch-room").addEventListener("click", openRoomPicker);
+      $("#rail-new").addEventListener("click", openRoomPicker);
+      $("#empty-pick").addEventListener("click", openRoomPicker);
 
       const copyBtn = $("#copy");
       copyBtn.addEventListener("click", async () => {
@@ -1514,12 +1815,10 @@
       $("#profile-close").addEventListener("click", () => profileDlg.close());
 
       // ---- Start ---------------------------------------------------------
-      // The service worker makes the site installable and shows an offline page with no connection
-      if ("serviceWorker" in navigator) {
-        window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));
-      }
-
+      // Keep the address in step with the room (a tapped notification compares it to find the right tab)
+      try { history.replaceState(null, "", `?room=${encodeURIComponent(room)}`); } catch {}
       applyRoom();
+      startPush();
       (async () => {
         try {
           const { ok, data } = await api("/api/me");
