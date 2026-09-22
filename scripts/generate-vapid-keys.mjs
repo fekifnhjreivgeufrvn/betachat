@@ -1,30 +1,39 @@
-// Makes the key pair that lets this server send push notifications (VAPID, RFC 8292).
+// Generates the two secrets push.js needs and prints the `wrangler secret put` commands to store
+// them. Run this once (or whenever you want to rotate the keys):
 //
-//   npm run vapid
+//   node scripts/generate-vapid-keys.mjs
 //
-// Run it once. Keep the same keys from then on: if they change, everyone who turned on
-// notifications has to turn them off and on again.
+// The private key never leaves this output — don't commit it, and don't put it in wrangler.jsonc.
 
-import { generateKeyPairSync } from "node:crypto";
+const b64uEncode = (bytes) => Buffer.from(bytes).toString("base64url");
 
-const { privateKey } = generateKeyPairSync("ec", { namedCurve: "P-256" });
-const jwk = privateKey.export({ format: "jwk" });
-const publicKey = Buffer.concat([Buffer.from([4]), Buffer.from(jwk.x, "base64url"), Buffer.from(jwk.y, "base64url")]).toString("base64url");
+const { publicKey, privateKey } = await crypto.subtle.generateKey(
+  { name: "ECDSA", namedCurve: "P-256" },
+  true,
+  ["sign", "verify"]
+);
 
+const publicRaw = new Uint8Array(await crypto.subtle.exportKey("raw", publicKey));
+const { d: privateD } = await crypto.subtle.exportKey("jwk", privateKey);
+
+const VAPID_PUBLIC_KEY = b64uEncode(publicRaw);
+const VAPID_PRIVATE_KEY = privateD; // already base64url per the JWK spec
+
+console.log(`VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY}`);
+console.log(`VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY}`);
 console.log(`
-VAPID_PUBLIC_KEY=${publicKey}
-VAPID_PRIVATE_KEY=${jwk.d}
+Store these as Worker secrets (this only has to be done once — they're read at request time,
+nothing needs to be redeployed afterwards):
 
-Live site: store both as Worker secrets (once), then deploy as usual.
+  npx wrangler secret put VAPID_PUBLIC_KEY
+    (paste ${VAPID_PUBLIC_KEY})
 
-  npx wrangler secret put VAPID_PUBLIC_KEY      (paste the public key)
-  npx wrangler secret put VAPID_PRIVATE_KEY     (paste the private key)
+  npx wrangler secret put VAPID_PRIVATE_KEY
+    (paste ${VAPID_PRIVATE_KEY})
 
-  Or in the Cloudflare dashboard: Workers & Pages > betachat > Settings > Variables and Secrets,
-  add each one with type "Secret".
+Optional: VAPID_PRIVATE_KEY's counterpart, a contact address some push services log if they need to
+reach you about this server (e.g. "mailto:you@example.com"). Falls back to the site's own origin
+if you skip it:
 
-Local testing (npm run dev): put the two lines above in a file named .dev.vars in the project
-folder. It is already in .gitignore.
-
-Never commit or share the private key.
+  npx wrangler secret put VAPID_SUBJECT
 `);

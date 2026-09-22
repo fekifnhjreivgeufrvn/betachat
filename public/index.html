@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>betachat</title>
-  <link rel="manifest" href="/manifest.json">
+  <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
   <meta name="theme-color" content="#e4ebe8" media="(prefers-color-scheme: light)">
@@ -69,7 +69,7 @@
       height: 100dvh;
     }
     @media (min-width: 800px) {
-      .app { border-inline: 1px solid var(--line); }
+      .app { border-inline: 1px solid var(--line); flex: 0 1 760px; min-width: 0; }
     }
 
     .sr {
@@ -122,6 +122,9 @@
       overflow-y: auto;
     }
     .join form { width: 100%; max-width: 30rem; margin: auto 0; }
+    .join-panel { width: 100%; max-width: 30rem; margin: auto 0; }
+    .join-panel form { margin: 0; }
+    .join h2 { margin: 1.5rem 0 0.4rem; font-size: 1.05rem; letter-spacing: -0.01em; }
     .join h1 {
       margin: 0 0 1rem;
       font-size: clamp(2.6rem, 11vw, 4.2rem);
@@ -136,11 +139,71 @@
     .me, .switch { margin: 0; color: var(--muted); }
     .switch { margin-top: 1rem; font-size: 0.9rem; }
     .me strong { color: var(--ink); }
-    .me + .lede { margin-top: 0.75rem; }
     .hint { margin: 0.4rem 0 0; font-size: 0.85rem; color: var(--muted); max-width: 44ch; }
     .form-error { margin: 1rem 0 0; font-size: 0.9rem; color: var(--danger); }
     .form-error:empty { display: none; }
     .form-error[data-kind="info"], .notice[data-kind="info"] { color: var(--muted); }
+
+    /* Rooms. On a wide screen this is a sidebar beside the chat; on a phone the same list sits above the
+       join form and the header's "Rooms" button opens it. Both lists are drawn by renderRooms(). */
+    .rail { display: none; }
+    .room-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.15rem; min-height: 0; overflow-y: auto; }
+    .room {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      width: 100%;
+      padding: 0.55rem 0.75rem;
+      border: 0;
+      border-radius: 12px;
+      background: none;
+      color: var(--ink);
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+    }
+    .room:hover { background: var(--bg); }
+    .room[aria-current="true"] { background: var(--mine); color: var(--mine-ink); }
+    .room-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .room svg { flex: none; opacity: 0.75; }
+    .room-alert { display: inline-flex; flex: none; opacity: 0.75; }
+    .room[aria-current="true"] .room-alert { opacity: 0.9; }
+
+    .my-rooms .room { min-height: 2.75rem; border: 1px solid var(--line); background: var(--surface); }
+    .my-rooms .room[aria-current="true"] { border-color: var(--mine); background: var(--mine); }
+
+    @media (min-width: 800px) {
+      .rail {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        flex: none;
+        width: 15rem;
+        height: 100dvh;
+        padding: 1rem 0.75rem;
+        border-left: 1px solid var(--line);
+        background: var(--surface);
+      }
+      .my-rooms, #switch-room { display: none; }
+    }
+    .wordmark { margin: 0; padding: 0.15rem 0.75rem 0; font-size: 1.15rem; font-weight: 700; letter-spacing: -0.02em; }
+    .rail-empty { margin: 0; padding: 0 0.75rem; font-size: 0.9rem; color: var(--muted); }
+    .rail-new {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.4rem;
+      margin-top: auto;
+      padding: 0.6rem 0.9rem;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: none;
+      color: var(--ink);
+      font: inherit;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .rail-new:hover { background: var(--bg); }
 
     /* Chat screen */
     .chat { flex: 1; min-height: 0; display: flex; flex-direction: column; }
@@ -208,7 +271,9 @@
       flex-direction: column;
       padding: 1rem;
     }
-    .empty { margin: auto; color: var(--muted); }
+    .empty { margin: auto; max-width: 32ch; text-align: center; color: var(--muted); }
+    .empty-note { display: block; margin-top: 0.6rem; font-size: 0.9rem; }
+    .empty-note strong { color: var(--ink); overflow-wrap: anywhere; }
 
     /* Profile pictures: a photo if the person set one, otherwise their initial on a colour picked from their name */
     .avatar {
@@ -330,6 +395,16 @@
   </style>
 </head>
 <body>
+  <nav class="rail" id="rail" aria-label="Your rooms" hidden>
+    <p class="wordmark">betachat</p>
+    <ul class="room-list" data-room-list></ul>
+    <p class="rail-empty" id="rail-empty" hidden>Rooms you join will show up here.</p>
+    <button class="rail-new" type="button" id="rail-new">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+      Join or create a room
+    </button>
+  </nav>
+
   <main class="app">
 
     <section class="join" id="auth" hidden>
@@ -351,21 +426,30 @@
     </section>
 
     <section class="join" id="join" hidden>
-      <form id="join-form" novalidate>
+      <div class="join-panel">
         <h1>betachat</h1>
         <p class="me">Signed in as <span class="avatar sm" id="me-avatar" aria-hidden="true"></span><strong id="me-name"></strong> · <button class="link profile-open" type="button">Profile</button> · <button class="link" type="button" id="logout">Log out</button></p>
-        <p class="lede">Pick a room. Add a password to make a new room private.</p>
 
-        <label for="room-input">Room</label>
-        <input id="room-input" maxlength="32" autocomplete="off" autocapitalize="none" spellcheck="false">
+        <section class="my-rooms" id="my-rooms" aria-labelledby="my-rooms-title" hidden>
+          <h2 id="my-rooms-title">Your rooms</h2>
+          <ul class="room-list" data-room-list></ul>
+        </section>
 
-        <label for="pw-input">Password (optional)</label>
-        <input id="pw-input" type="password" maxlength="128" autocomplete="off" aria-describedby="pw-hint">
-        <p class="hint" id="pw-hint">Leave blank for a public room. Set one to make a new private room, or enter it to join a private room. If you created the room, you don't need it.</p>
+        <form id="join-form" novalidate>
+          <h2>Join or create a room</h2>
+          <p class="lede">Enter a room name. If it doesn't exist yet, it's created. Add a password to make a new room private.</p>
 
-        <p class="form-error" id="join-error" role="alert"></p>
-        <button class="btn" type="submit" id="join-btn">Join room</button>
-      </form>
+          <label for="room-input">Room</label>
+          <input id="room-input" maxlength="32" autocomplete="off" autocapitalize="none" spellcheck="false">
+
+          <label for="pw-input">Password (optional)</label>
+          <input id="pw-input" type="password" maxlength="128" autocomplete="off" aria-describedby="pw-hint">
+          <p class="hint" id="pw-hint">Leave blank for a public room. Set one to make a new private room, or enter it to join a private room. If you created the room, you don't need it.</p>
+
+          <p class="form-error" id="join-error" role="alert"></p>
+          <button class="btn" type="submit" id="join-btn">Join room</button>
+        </form>
+      </div>
     </section>
 
     <section class="chat" id="chat" hidden>
@@ -388,8 +472,8 @@
           <button class="link" type="button" id="settings-btn" hidden>Room settings</button>
           <button class="link profile-open" type="button">Profile</button>
           <button class="link" type="button" id="copy">Copy invite link</button>
-          <button class="link" type="button" id="alerts-btn" aria-pressed="false" title="Sound and a desktop notification for new messages while this tab is in the background. The unread count in the tab title is always on.">Alerts: off</button>
-          <button class="link" type="button" id="switch-room">Switch room</button>
+          <button class="link" type="button" id="alerts-btn" aria-pressed="false">Alerts here: off</button>
+          <button class="link" type="button" id="switch-room">Rooms</button>
         </div>
       </header>
 
@@ -402,7 +486,10 @@
       </aside>
 
       <div class="messages" id="messages" role="log" aria-live="polite" aria-label="Messages">
-        <p class="empty" id="empty">No messages yet. Say hello.</p>
+        <p class="empty" id="empty">
+          <span id="empty-main">No messages yet. Say hello.</span>
+          <span class="empty-note" id="empty-note" hidden>You just created <strong id="empty-room"></strong>. If you meant to join a room that already exists, check the spelling. <button class="link" type="button" id="empty-pick">Choose another room</button></span>
+        </p>
       </div>
 
       <p class="notice" id="notice" role="status"></p>
@@ -536,12 +623,134 @@
       const profileMsg = $("#profile-msg");
       const typingDots = $("#typing-dots"), typingText = $("#typing-text");
       const alertsBtn = $("#alerts-btn");
+      const rail = $("#rail"), railEmpty = $("#rail-empty"), myRoomsBox = $("#my-rooms");
+      const emptyNote = $("#empty-note"), emptyRoom = $("#empty-room");
 
       function applyRoom() {
         updateTitle();
         roomTitle.textContent = `#${room}`;
         badgeEl.hidden = !isPrivate;
         settingsBtn.hidden = !isOwner;
+        updateAlertsTitle();
+        renderRooms();
+      }
+
+      // ---- Your rooms --------------------------------------------------------
+      // The rooms you've been in, kept on this device for this account (a room name isn't a secret, and
+      // the passwords stay in sessionStorage as before). There is no server-side list of rooms, so this is
+      // also why a room shows up here only once it has something in it: a room you just made by typing a
+      // name is empty and new, and if that name was a typo it leaves nothing behind.
+      const MAX_ROOMS = 30;
+      let roomList = [];  // [{ name, private, ts }]
+      let renderedRooms = null;
+      let justCreated = false; // this join made the room (and the person asked for it), so say so in the empty state
+      const roomsStorageKey = () => `betachat:rooms:${myKey}`;
+      const LOCK_ICON = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg><span class="sr">(private)</span>';
+      // Shown on whichever room currently has Alerts (there's only ever one: it follows the room you're
+      // in, not every room you've joined). Rendered by the same loop that highlights the current room.
+      const BELL_ICON = '<span class="room-alert"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 4 1.3 5.4 2 6H4c.7-.6 2-2 2-6Z"/><path d="M10 20a2 2 0 0 0 4 0"/></svg><span class="sr">Alerts are on for this room</span></span>';
+
+      function loadRooms() {
+        roomList = [];
+        try {
+          const saved = JSON.parse(localStorage.getItem(roomsStorageKey()) || "[]");
+          if (Array.isArray(saved)) {
+            roomList = saved
+              .filter((r) => r && typeof r.name === "string" && cleanRoom(r.name) === r.name)
+              .map((r) => ({ name: r.name, private: !!r.private, ts: Number(r.ts) || 0 }));
+          }
+        } catch {}
+      }
+
+      function saveRooms() {
+        try { localStorage.setItem(roomsStorageKey(), JSON.stringify(roomList)); } catch {}
+      }
+
+      function rememberRoom() {
+        if (!myKey) return;
+        const entry = roomList.find((r) => r.name === room);
+        if (entry) {
+          entry.private = isPrivate;
+          entry.ts = Date.now();
+        } else {
+          roomList.push({ name: room, private: isPrivate, ts: Date.now() });
+          if (roomList.length > MAX_ROOMS) roomList = roomList.sort((a, b) => b.ts - a.ts).slice(0, MAX_ROOMS);
+        }
+        saveRooms();
+        renderRooms();
+      }
+
+      function forgetRoom(name) {
+        if (!roomList.some((r) => r.name === name)) return;
+        roomList = roomList.filter((r) => r.name !== name);
+        saveRooms();
+        renderRooms();
+      }
+
+      // The room's lock can change while I'm in it (the owner sets or removes a password)
+      function syncRoomLock() {
+        const entry = roomList.find((r) => r.name === room);
+        if (entry && entry.private !== isPrivate) {
+          entry.private = isPrivate;
+          saveRooms();
+        }
+      }
+
+      // Alphabetical, so the list holds still while you move between rooms. The room you're in is always
+      // there, even before it has been kept.
+      function visibleRooms() {
+        const list = roomList.map((r) => ({ name: r.name, private: r.private }));
+        if (joined && !list.some((r) => r.name === room)) list.push({ name: room, private: isPrivate });
+        return list.sort((a, b) => a.name.localeCompare(b.name));
+      }
+
+      function makeRoomRow(r) {
+        const li = document.createElement("li");
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "room";
+        button.dataset.room = r.name;
+        const name = document.createElement("span");
+        name.className = "room-name";
+        name.textContent = `#${r.name}`; // textContent, like everything else that comes from a name
+        button.append(name);
+        if (r.private) button.insertAdjacentHTML("beforeend", LOCK_ICON); // fixed markup, no user data
+        li.append(button);
+        return li;
+      }
+
+      // Draws the list in both places (sidebar, and above the join form on a phone). It only rebuilds the
+      // rows when the list itself changed, so moving between rooms doesn't drop keyboard focus.
+      function renderRooms() {
+        const list = visibleRooms();
+        const signature = list.map((r) => `${r.name}${r.private ? "*" : ""}`).join(",");
+        const lists = [...document.querySelectorAll("[data-room-list]")];
+
+        if (signature !== renderedRooms) {
+          renderedRooms = signature;
+          const active = document.activeElement;
+          const focusName = active && active.classList.contains("room") ? active.dataset.room : "";
+          const focusIn = focusName ? lists.indexOf(active.closest("[data-room-list]")) : -1;
+          lists.forEach((ul) => ul.replaceChildren(...list.map(makeRoomRow)));
+          if (focusIn >= 0) {
+            const again = lists[focusIn].querySelector(`.room[data-room="${focusName}"]`);
+            if (again) again.focus();
+          }
+        }
+
+        lists.forEach((ul) =>
+          ul.querySelectorAll(".room").forEach((button) => {
+            const isCurrent = (joined || awaitingJoin) && button.dataset.room === room;
+            if (isCurrent) button.setAttribute("aria-current", "true");
+            else button.removeAttribute("aria-current");
+            // Alerts follow whichever room this is, so the bell only ever sits on the current row.
+            const badge = button.querySelector(".room-alert");
+            if (isCurrent && alertsOn && !badge) button.insertAdjacentHTML("beforeend", BELL_ICON);
+            else if (!(isCurrent && alertsOn) && badge) badge.remove();
+          })
+        );
+        railEmpty.hidden = list.length > 0;
+        myRoomsBox.hidden = list.length === 0;
       }
 
       // ---- Alerts for messages that arrive while you're looking elsewhere --
@@ -774,31 +983,43 @@
       }
 
       // ---- The Alerts button -----------------------------------------------
+      // Alerts follow whichever room this tab is connected to, and only that one: turning it on in
+      // #general does not cover #design-team too, and switching rooms moves it rather than doubling it
+      // up. Every string here says so, since a plain "Alerts: on" reads as covering everything.
       const alertsSummary = (outcome) => {
+        const here = `for #${room}`;
         switch (outcome) {
-          case "push": return "Alerts are on. You'll be notified of new messages even when betachat is closed.";
-          case "denied": return "Alerts are on with sound and an unread count. Notifications are blocked for this site in your browser settings.";
-          case "needs-install": return "Alerts are on with sound and an unread count. To be notified when the app is closed, add betachat to your Home Screen first.";
-          case "unsupported": return "Alerts are on with sound and an unread count. This browser can't show notifications.";
+          case "push": return `Alerts are on ${here}. You'll be notified of new messages here even when betachat is closed. Switching rooms moves this to the new one.`;
+          case "denied": return `Alerts are on ${here} with sound and an unread count. Notifications are blocked for this site in your browser settings.`;
+          case "needs-install": return `Alerts are on ${here} with sound and an unread count. To be notified when the app is closed, add betachat to your Home Screen first.`;
+          case "unsupported": return `Alerts are on ${here} with sound and an unread count. This browser can't show notifications.`;
           default:
             return canNotify() && Notification.permission === "granted"
-              ? "Alerts are on: sound, an unread count and notifications while betachat is open."
-              : "Alerts are on with sound and an unread count.";
+              ? `Alerts are on ${here}: sound, an unread count and notifications while betachat is open. Switching rooms moves this to the new one.`
+              : `Alerts are on ${here} with sound and an unread count.`;
         }
       };
 
+      function updateAlertsTitle() {
+        alertsBtn.title = alertsOn
+          ? `On for #${room} only: sound and a notification for new messages here while this tab is open. Leaving this room turns it off here and on wherever you go next. The unread count in the tab title covers every room and is always on.`
+          : "Sound and a notification for new messages in whichever room this tab is connected to, while it's open. Only ever covers one room at a time. The unread count in the tab title covers every room and is always on.";
+      }
+
       function renderAlertsButton() {
-        alertsBtn.textContent = `Alerts: ${alertsOn ? "on" : "off"}`;
+        alertsBtn.textContent = `Alerts here: ${alertsOn ? "on" : "off"}`;
         alertsBtn.setAttribute("aria-pressed", String(alertsOn));
+        updateAlertsTitle();
       }
 
       alertsBtn.addEventListener("click", async () => {
         alertsOn = !alertsOn;
         try { localStorage.setItem("betachat:alerts", alertsOn ? "1" : "0"); } catch {}
         renderAlertsButton();
+        renderRooms(); // the bell on the room list follows the same state (joined is defined by now)
         if (!alertsOn) {
           await dropPush();
-          notify("Alerts are off. The unread count in the tab title stays on.", "info");
+          notify(`Alerts are off for #${room}. The unread count in the tab title stays on for every room.`, "info");
           return;
         }
         await unlockAudio();
@@ -972,6 +1193,7 @@
         listEl.querySelectorAll(".msg").forEach((el) => el.remove());
         lastMsg = null;
         emptyEl.hidden = false;
+        emptyNote.hidden = true;
         onlineEl.textContent = "";
         clearTyping();
       }
@@ -979,6 +1201,11 @@
       function showHistory(messages) {
         clearMessages();
         emptyEl.hidden = messages.length > 0;
+        // A new, empty room that the person asked for by name. Easy to miss a typo otherwise: it looks
+        // exactly like a room whose messages have vanished.
+        emptyRoom.textContent = `#${room}`;
+        emptyNote.hidden = !justCreated;
+        justCreated = false;
         messages.forEach((m) => renderMessage(m, true));
       }
 
@@ -1000,6 +1227,8 @@
       // ---- Views ---------------------------------------------------------
       function show(name) {
         for (const [key, el] of Object.entries(views)) el.hidden = key !== name;
+        rail.hidden = name === "auth"; // (only wide screens ever show it)
+        renderRooms();
       }
 
       let registering = false;
@@ -1025,6 +1254,8 @@
         authUser.focus();
       }
 
+      // `focusEl` null means "wherever suits": the room name box on a wide screen, but on a phone the list
+      // (an open keyboard would cover it), unless there are no rooms to pick from yet.
       function showJoin(message = "", focusEl = roomInput) {
         show("join");
         roomInput.value = room;
@@ -1032,8 +1263,18 @@
         joinError.textContent = message;
         joinBtn.disabled = false;
         joinBtn.textContent = "Join room";
+        if (!focusEl) {
+          const wide = window.matchMedia("(min-width: 800px)").matches;
+          focusEl = (!wide && (myRoomsBox.querySelector('.room[aria-current="true"]') || myRoomsBox.querySelector(".room"))) || roomInput;
+        }
         focusEl.focus();
         if (focusEl.type === "text") focusEl.select();
+      }
+
+      // "Rooms" (phone) and "Join or create a room" (sidebar): the list, and a blank form for a room that isn't in it
+      function openRoomPicker() {
+        showJoin("", null);
+        roomInput.value = pwInput.value = "";
       }
 
       function showChat() {
@@ -1068,6 +1309,11 @@
         isPrivate = !!data.private;
         isOwner = !!data.owner;
         if (isPrivate && password) session.set(`chat:pw:${room}`, password);
+        // A room made by this very join is new and empty. It goes on the list once someone posts in it, and
+        // one that was on the list but no longer existed (it was deleted) comes off.
+        justCreated = !!data.created && awaitingJoin;
+        if (data.created) forgetRoom(room);
+        else rememberRoom();
         applyRoom();
         setStatus("open");
         joinError.textContent = "";
@@ -1075,6 +1321,7 @@
         if (awaitingJoin) {
           awaitingJoin = false;
           showChat();
+          if (rail.contains(document.activeElement)) textEl.focus(); // picked from the sidebar: type next
         }
       }
 
@@ -1118,6 +1365,7 @@
 
       function onRoomUpdated(data) {
         isPrivate = !!data.private;
+        syncRoomLock();
         if (!isPrivate) {
           password = "";
           session.remove(`chat:pw:${room}`);
@@ -1152,6 +1400,7 @@
         if (profileDlg.open) profileDlg.close();
         avatarVersions.clear();
         myAvatar = null;
+        roomList = [];
         me = myKey = password = pendingPassword = "";
         isPrivate = isOwner = blocked = awaitingJoin = false;
         unread = 0;
@@ -1182,6 +1431,7 @@
               renderMessage(data.message, data.message.cid === myKey);
               setTyping(data.message.cid, "", false); // they sent it, so they're done typing
               if (data.message.cid !== myKey) onIncoming(data.message);
+              if (!roomList.some((r) => r.name === room)) rememberRoom(); // the room now has something in it
               break;
             case "typing":
               if (typeof data.cid === "string" && typeof data.name === "string" && data.cid !== myKey) {
@@ -1197,6 +1447,7 @@
               break;
             case "kicked": leaveRoom(data.message, pwInput); break;
             case "room_deleted":
+              forgetRoom(room);
               leaveRoom(data.by && data.by.toLowerCase() === myKey ? `#${room} was deleted.` : data.message, roomInput);
               break;
           }
@@ -1235,6 +1486,7 @@
         myKey = username.toLowerCase();
         meName.textContent = username;
         myAvatar = avatar || null;
+        loadRooms();
         avatarVersions.clear();
         if (myAvatar) avatarVersions.set(myKey, myAvatar);
         fillAvatar(meAvatar, myKey, me);
@@ -1280,10 +1532,8 @@
       });
 
       // ---- Actions -------------------------------------------------------
-      joinForm.addEventListener("submit", (event) => {
-        event.preventDefault();
-        const newRoom = cleanRoom(roomInput.value);
-        const newPassword = pwInput.value;
+      // Go to a room: from the join form, or from a row in the list of rooms
+      function enterRoom(newRoom, newPassword) {
         joinError.textContent = "";
 
         // Same room, same password, still connected: nothing to redo
@@ -1295,22 +1545,42 @@
         if (newRoom !== room) unregisterPush(); // notifications follow the room you're in
         disconnect();
         clearMessages(); // never show one room's messages under another room's name
+        emptyEl.hidden = true; // ...and don't call it empty while its history is still on the way
         room = newRoom;
         password = newPassword;
         isPrivate = isOwner = false;
         unread = 0;
-        history.replaceState(null, "", `?room=${encodeURIComponent(room)}`);
-        applyRoom();
-
         blocked = false;
         retry = 0;
         awaitingJoin = true;
+        history.replaceState(null, "", `?room=${encodeURIComponent(room)}`);
+        applyRoom();
+
         joinBtn.disabled = true;
         joinBtn.textContent = "Joining…";
         connect();
+      }
+
+      joinForm.addEventListener("submit", (event) => {
+        event.preventDefault();
+        if (!roomInput.value.trim()) {
+          joinError.textContent = "Enter a room name.";
+          roomInput.focus();
+          return;
+        }
+        enterRoom(cleanRoom(roomInput.value), pwInput.value);
       });
 
-      $("#switch-room").addEventListener("click", () => showJoin());
+      // A row in either list of rooms. A private room uses the password this tab already has; if there
+      // isn't one, the server says so and the form asks for it.
+      document.addEventListener("click", (event) => {
+        const row = event.target.closest && event.target.closest(".room");
+        if (row) enterRoom(row.dataset.room, session.get(`chat:pw:${row.dataset.room}`) || "");
+      });
+
+      $("#switch-room").addEventListener("click", openRoomPicker);
+      $("#rail-new").addEventListener("click", openRoomPicker);
+      $("#empty-pick").addEventListener("click", openRoomPicker);
 
       const copyBtn = $("#copy");
       copyBtn.addEventListener("click", async () => {
