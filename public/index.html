@@ -166,6 +166,8 @@
     .room[aria-current="true"] { background: var(--mine); color: var(--mine-ink); }
     .room-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .room svg { flex: none; opacity: 0.75; }
+    .room-alert { display: inline-flex; flex: none; opacity: 0.75; }
+    .room[aria-current="true"] .room-alert { opacity: 0.9; }
 
     .my-rooms .room { min-height: 2.75rem; border: 1px solid var(--line); background: var(--surface); }
     .my-rooms .room[aria-current="true"] { border-color: var(--mine); background: var(--mine); }
@@ -470,7 +472,7 @@
           <button class="link" type="button" id="settings-btn" hidden>Room settings</button>
           <button class="link profile-open" type="button">Profile</button>
           <button class="link" type="button" id="copy">Copy invite link</button>
-          <button class="link" type="button" id="alerts-btn" aria-pressed="false" title="Sound and a desktop notification for new messages while this tab is in the background. The unread count in the tab title is always on.">Alerts: off</button>
+          <button class="link" type="button" id="alerts-btn" aria-pressed="false">Alerts here: off</button>
           <button class="link" type="button" id="switch-room">Rooms</button>
         </div>
       </header>
@@ -629,6 +631,7 @@
         roomTitle.textContent = `#${room}`;
         badgeEl.hidden = !isPrivate;
         settingsBtn.hidden = !isOwner;
+        updateAlertsTitle();
         renderRooms();
       }
 
@@ -643,6 +646,9 @@
       let justCreated = false; // this join made the room (and the person asked for it), so say so in the empty state
       const roomsStorageKey = () => `betachat:rooms:${myKey}`;
       const LOCK_ICON = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg><span class="sr">(private)</span>';
+      // Shown on whichever room currently has Alerts (there's only ever one: it follows the room you're
+      // in, not every room you've joined). Rendered by the same loop that highlights the current room.
+      const BELL_ICON = '<span class="room-alert"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 4 1.3 5.4 2 6H4c.7-.6 2-2 2-6Z"/><path d="M10 20a2 2 0 0 0 4 0"/></svg><span class="sr">Alerts are on for this room</span></span>';
 
       function loadRooms() {
         roomList = [];
@@ -734,8 +740,13 @@
 
         lists.forEach((ul) =>
           ul.querySelectorAll(".room").forEach((button) => {
-            if ((joined || awaitingJoin) && button.dataset.room === room) button.setAttribute("aria-current", "true");
+            const isCurrent = (joined || awaitingJoin) && button.dataset.room === room;
+            if (isCurrent) button.setAttribute("aria-current", "true");
             else button.removeAttribute("aria-current");
+            // Alerts follow whichever room this is, so the bell only ever sits on the current row.
+            const badge = button.querySelector(".room-alert");
+            if (isCurrent && alertsOn && !badge) button.insertAdjacentHTML("beforeend", BELL_ICON);
+            else if (!(isCurrent && alertsOn) && badge) badge.remove();
           })
         );
         railEmpty.hidden = list.length > 0;
@@ -972,31 +983,43 @@
       }
 
       // ---- The Alerts button -----------------------------------------------
+      // Alerts follow whichever room this tab is connected to, and only that one: turning it on in
+      // #general does not cover #design-team too, and switching rooms moves it rather than doubling it
+      // up. Every string here says so, since a plain "Alerts: on" reads as covering everything.
       const alertsSummary = (outcome) => {
+        const here = `for #${room}`;
         switch (outcome) {
-          case "push": return "Alerts are on. You'll be notified of new messages even when betachat is closed.";
-          case "denied": return "Alerts are on with sound and an unread count. Notifications are blocked for this site in your browser settings.";
-          case "needs-install": return "Alerts are on with sound and an unread count. To be notified when the app is closed, add betachat to your Home Screen first.";
-          case "unsupported": return "Alerts are on with sound and an unread count. This browser can't show notifications.";
+          case "push": return `Alerts are on ${here}. You'll be notified of new messages here even when betachat is closed. Switching rooms moves this to the new one.`;
+          case "denied": return `Alerts are on ${here} with sound and an unread count. Notifications are blocked for this site in your browser settings.`;
+          case "needs-install": return `Alerts are on ${here} with sound and an unread count. To be notified when the app is closed, add betachat to your Home Screen first.`;
+          case "unsupported": return `Alerts are on ${here} with sound and an unread count. This browser can't show notifications.`;
           default:
             return canNotify() && Notification.permission === "granted"
-              ? "Alerts are on: sound, an unread count and notifications while betachat is open."
-              : "Alerts are on with sound and an unread count.";
+              ? `Alerts are on ${here}: sound, an unread count and notifications while betachat is open. Switching rooms moves this to the new one.`
+              : `Alerts are on ${here} with sound and an unread count.`;
         }
       };
 
+      function updateAlertsTitle() {
+        alertsBtn.title = alertsOn
+          ? `On for #${room} only: sound and a notification for new messages here while this tab is open. Leaving this room turns it off here and on wherever you go next. The unread count in the tab title covers every room and is always on.`
+          : "Sound and a notification for new messages in whichever room this tab is connected to, while it's open. Only ever covers one room at a time. The unread count in the tab title covers every room and is always on.";
+      }
+
       function renderAlertsButton() {
-        alertsBtn.textContent = `Alerts: ${alertsOn ? "on" : "off"}`;
+        alertsBtn.textContent = `Alerts here: ${alertsOn ? "on" : "off"}`;
         alertsBtn.setAttribute("aria-pressed", String(alertsOn));
+        updateAlertsTitle();
       }
 
       alertsBtn.addEventListener("click", async () => {
         alertsOn = !alertsOn;
         try { localStorage.setItem("betachat:alerts", alertsOn ? "1" : "0"); } catch {}
         renderAlertsButton();
+        renderRooms(); // the bell on the room list follows the same state (joined is defined by now)
         if (!alertsOn) {
           await dropPush();
-          notify("Alerts are off. The unread count in the tab title stays on.", "info");
+          notify(`Alerts are off for #${room}. The unread count in the tab title stays on for every room.`, "info");
           return;
         }
         await unlockAudio();
