@@ -1,4 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
+import { pushConfigured, parseSubscription, sendPush } from "./push.js";
 
 const MAX_TEXT = 500;
 const HISTORY_LIMIT = 50; // messages sent to someone who just joined
@@ -28,9 +29,17 @@ const AVATAR_NOTICE_GAP_MS = 1000; // "my picture changed" notices from one conn
 // Typing indicator
 const TYPING_GAP_MS = 1000; // "still typing" refreshes from one connection go out at most this often
 
+// Push notifications to people who are away (the browser side is in public/sw.js; the sending is in push.js)
+const PUSH_SUB_GAP_MS = 1000; // "turn on notifications for this device" requests from one connection are handled at most this often
+const MAX_PUSH_PER_USER = 5; // devices one person can have notifications on for, per room (a new one replaces their oldest)
+const MAX_PUSH_PER_ROOM = 40; // each push is one outgoing request, and a Worker on the free plan may make 50 per event
+const PUSH_TTL_S = 4 * 60 * 60; // if a phone is off or offline, the push service keeps a message this long
+const PUSH_BODY_CHARS = 140;
+
 // Set by the Worker after it has checked the login cookie. Room objects trust it
 // because only the Worker can reach them; the Worker overwrites whatever the client sent.
 const USER_HEADER = "X-Betachat-User";
+const ROOM_HEADER = "X-Betachat-Room"; // likewise: the room name, which a Durable Object can't read from its own id
 
 // Private rooms
 const MIN_PASSWORD = 6;
@@ -232,6 +241,7 @@ export default {
       const stub = env.CHAT_ROOM.get(env.CHAT_ROOM.idFromName(room));
       const headers = new Headers(request.headers);
       headers.set(USER_HEADER, session.name); // set, not append: a client-supplied value is discarded
+      headers.set(ROOM_HEADER, room);
       return stub.fetch(new Request(request, { headers }));
     }
 
@@ -260,6 +270,13 @@ async function handleApi(request, env, url) {
     // A cross-site page can't send these without a preflight, and the cookie is SameSite=Lax as well.
     if (!sameOrigin(request, url)) return json({ error: "Forbidden." }, 403);
     return request.method === "POST" ? uploadAvatar(request, env) : removeAvatar(request, env);
+  }
+
+  // The public half of the push key pair, which the browser needs to subscribe. Absent = push is not set up.
+  if (url.pathname === "/api/push-key" && request.method === "GET") {
+    return pushConfigured(env)
+      ? json({ key: env.VAPID_PUBLIC_KEY })
+      : json({ error: "Notifications are not set up on this server." }, 404);
   }
 
   if (request.method !== "POST") return json({ error: "Not found." }, 404);
@@ -592,7 +609,10 @@ export class UserDirectory extends DurableObject {
 //   client -> server  {type:"delete_room"}              owner only; wipes the room
 //   client -> server  {type:"avatar_updated"}           "I changed my picture"; the room tells everyone to look again
 //   client -> server  {type:"typing", typing:true|false}   started/kept typing, or stopped
-//   server -> client  {type:"joined", private, owner}   then "history", "presence"
+//   client -> server  {type:"away", away:true|false}       this tab is hidden / visible again
+//   client -> server  {type:"push_subscribe", subscription}   "notify this device about this room when I'm away"
+//   client -> server  {type:"push_unsubscribe", endpoint}     stop that
+//   server -> client  {type:"joined", private, owner, created}   then "history", "presence"
 //   server -> client  {type:"join_error", code, message}   socket is closed
 //   server -> client  {type:"room_updated", private, message}
 //   server -> client  {type:"kicked" | "room_deleted", by?, message}   socket is closed
@@ -634,6 +654,18 @@ export class ChatRoom extends DurableObject {
       .some((column) => column.name === "owner");
     if (!hasOwner) this.sql.exec("ALTER TABLE room ADD COLUMN owner TEXT");
 
+    // Devices to notify about this room when their owner has it closed. One row per browser
+    // subscription; `cid` is the lowercase username it belongs to.
+    this.sql.exec(`
+      CREATE TABLE IF NOT EXISTS push_subs (
+        endpoint TEXT PRIMARY KEY,
+        cid      TEXT    NOT NULL,
+        p256dh   TEXT    NOT NULL,
+        auth     TEXT    NOT NULL,
+        created  INTEGER NOT NULL
+      )
+    `);
+
     // Wrong-password counters per IP; rows are deleted once they are older than LOCK_MS
     this.sql.exec(`
       CREATE TABLE IF NOT EXISTS auth_attempts (
@@ -659,6 +691,9 @@ export class ChatRoom extends DurableObject {
       user, // as registered, for display
       key: user.toLowerCase(), // identity
       ip: request.headers.get("CF-Connecting-IP") || "unknown",
+      room: request.headers.get(ROOM_HEADER) || "",
+      origin: new URL(request.url).origin, // the address people use for this site (push services want a contact for the sender)
+      away: false, // the page says so when its tab is hidden
     });
 
     return new Response(null, { status: 101, webSocket: client });
@@ -696,6 +731,16 @@ export class ChatRoom extends DurableObject {
         return this.avatarUpdated(ws, meta);
       case "typing":
         if (data.typing === true || data.typing === false) this.typing(ws, meta, data.typing);
+        return;
+      case "away":
+        if (typeof data.away === "boolean" && data.away !== !!meta.away) ws.serializeAttachment({ ...meta, away: data.away });
+        return;
+      case "push_subscribe":
+        return this.pushSubscribe(ws, meta, data.subscription);
+      case "push_unsubscribe":
+        if (typeof data.endpoint === "string" && data.endpoint.length <= 1000) {
+          this.sql.exec("DELETE FROM push_subs WHERE endpoint = ? AND cid = ?", data.endpoint, meta.key);
+        }
         return;
     }
   }
@@ -745,7 +790,7 @@ export class ChatRoom extends DurableObject {
     this.broadcast({ type: "avatar", cid: meta.key, v: version ?? 0 });
   }
 
-  postMessage(ws, meta, data) {
+  async postMessage(ws, meta, data) {
     const text = String(data.text ?? "").trim().slice(0, MAX_TEXT);
     if (!text) return;
 
@@ -777,6 +822,92 @@ export class ChatRoom extends DurableObject {
       type: "message",
       message: { id, cid: meta.key, name: meta.user, text, ts: now },
     });
+
+    // Everyone connected has it now; tell the people who aren't looking
+    await this.pushToAway(meta, text);
+  }
+
+  // ---- Notifications for people who are away --------------------------------
+  // Someone with a stored subscription gets a push if they are not watching this room: no open
+  // connection at all, or only tabs that have reported themselves hidden. (A phone that suspends a
+  // page may leave its socket looking open for a while, which is why "hidden" counts as away.)
+  // The sender never gets one for their own message.
+  async pushSubscribe(ws, meta, input) {
+    if (!pushConfigured(this.env)) return;
+    const now = Date.now();
+    if (meta.lastPushSub && now - meta.lastPushSub < PUSH_SUB_GAP_MS) return;
+    ws.serializeAttachment({ ...meta, lastPushSub: now });
+
+    const sub = await parseSubscription(input);
+    if (!sub) return this.settingsError(ws, "Notifications couldn't be set up on this device.");
+
+    const known = this.sql.exec("SELECT cid FROM push_subs WHERE endpoint = ?", sub.endpoint).toArray()[0];
+    if (!known) {
+      const mine = this.sql.exec("SELECT COUNT(*) AS n FROM push_subs WHERE cid = ?", meta.key).one().n;
+      if (mine >= MAX_PUSH_PER_USER) {
+        // Their oldest device makes room for this one
+        this.sql.exec(
+          "DELETE FROM push_subs WHERE endpoint IN (SELECT endpoint FROM push_subs WHERE cid = ? ORDER BY created LIMIT ?)",
+          meta.key,
+          mine - MAX_PUSH_PER_USER + 1
+        );
+      }
+      const total = this.sql.exec("SELECT COUNT(*) AS n FROM push_subs").one().n;
+      if (total >= MAX_PUSH_PER_ROOM) {
+        return this.settingsError(ws, "Too many people have notifications on for this room right now.");
+      }
+    }
+    // An address that was someone else's (a shared device, a new login) becomes this person's
+    this.sql.exec(
+      `INSERT INTO push_subs (endpoint, cid, p256dh, auth, created) VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(endpoint) DO UPDATE SET cid = excluded.cid, p256dh = excluded.p256dh, auth = excluded.auth, created = excluded.created`,
+      sub.endpoint,
+      meta.key,
+      sub.p256dh,
+      sub.auth,
+      now
+    );
+  }
+
+  async pushToAway(meta, text) {
+    try {
+      if (!pushConfigured(this.env)) return;
+      const subject = this.env.VAPID_SUBJECT || meta.origin;
+      if (!subject) return;
+
+      const subs = this.sql.exec("SELECT endpoint, cid, p256dh, auth FROM push_subs WHERE cid != ?", meta.key).toArray();
+      if (!subs.length) return;
+
+      const watching = new Set();
+      for (const socket of this.liveSockets()) {
+        const info = socket.deserializeAttachment() || {};
+        if (!info.away) watching.add(info.key);
+      }
+      const targets = subs.filter((sub) => !watching.has(sub.cid));
+      if (!targets.length) return;
+
+      const chars = Array.from(text);
+      const payload = {
+        title: `${meta.user} in #${meta.room}`,
+        body: chars.length > PUSH_BODY_CHARS ? `${chars.slice(0, PUSH_BODY_CHARS - 1).join("")}…` : text,
+        room: meta.room,
+        tag: `betachat:${meta.room}`,
+      };
+
+      const outcomes = await Promise.allSettled(
+        targets.map(async (sub) => {
+          const result = await sendPush(this.env, sub, payload, { subject, ttl: PUSH_TTL_S });
+          if (result.gone) this.sql.exec("DELETE FROM push_subs WHERE endpoint = ?", sub.endpoint); // they cancelled it
+          else if (!result.ok) console.warn("push refused", new URL(sub.endpoint).host, result.status, result.detail);
+          return result;
+        })
+      );
+      const failed = outcomes.filter((o) => o.status === "rejected");
+      for (const o of failed) console.warn("push failed", String(o.reason));
+      console.log(`push: ${targets.length} away, ${outcomes.filter((o) => o.status === "fulfilled" && o.value.ok).length} delivered to the push service`);
+    } catch (err) {
+      console.warn("push error", String(err)); // a broken push must never break chat
+    }
   }
 
   async webSocketClose(ws) {
@@ -875,7 +1006,7 @@ export class ChatRoom extends DurableObject {
       )
       .toArray()
       .reverse();
-    ws.send(JSON.stringify({ type: "joined", private: !!config.private, owner: isOwner }));
+    ws.send(JSON.stringify({ type: "joined", private: !!config.private, owner: isOwner, created }));
     ws.send(JSON.stringify({ type: "history", messages: history }));
     this.broadcastPresence();
   }
@@ -916,6 +1047,7 @@ export class ChatRoom extends DurableObject {
     );
     // Everyone else was let in by the old password (or by the room being public):
     // sign them out so only people who get the new password stay.
+    this.sql.exec("DELETE FROM push_subs WHERE cid != ?", meta.key); // signed out, so no more notifications either
     this.closeOthers(meta.sid, {
       type: "kicked",
       message: `${meta.user} set a new password for this room. Enter it to rejoin.`,
@@ -947,6 +1079,7 @@ export class ChatRoom extends DurableObject {
     this.sql.exec("DELETE FROM messages");
     this.sql.exec("DELETE FROM room");
     this.sql.exec("DELETE FROM auth_attempts");
+    this.sql.exec("DELETE FROM push_subs");
     this.closeOthers(null, { type: "room_deleted", by: meta.user, message: `${meta.user} deleted this room.` });
   }
 
