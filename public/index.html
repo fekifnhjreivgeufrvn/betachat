@@ -401,10 +401,9 @@
       max-width: 62rem;
       margin-inline: auto;
     }
-    .chat-head-main { flex: 1; min-width: 0; }
     /* The primary, unambiguous way out of an open conversation on a phone (no sidebar or bottom
        tabs are visible while a chat is open - see show()). Kept visually distinct from the
-       secondary actions on the right so there's exactly one obvious answer to "how do I get back?" */
+       tappable title area so there's exactly one obvious answer to "how do I get back?" */
     .chat-back {
       display: flex;
       align-items: center;
@@ -422,14 +421,33 @@
       border-radius: 0.5rem;
     }
     .chat-back:hover, .chat-back:focus-visible { color: var(--ink); background: var(--bg); }
-    .title-row { display: flex; align-items: center; flex-wrap: wrap; gap: 0.2rem 0.6rem; }
+    /* Everything else about the room - name, privacy, who's online - lives behind one tap here,
+       instead of a row of separate links competing for width on a phone. */
+    .chat-head-main {
+      flex: 1;
+      min-width: 0;
+      display: block;
+      text-align: left;
+      margin: 0;
+      padding: 0.3rem 0.5rem;
+      border: 0;
+      background: none;
+      font: inherit;
+      cursor: pointer;
+      border-radius: 0.5rem;
+    }
+    .chat-head-main:hover, .chat-head-main:focus-visible { background: var(--bg); }
+    .title-row { display: flex; align-items: center; flex-wrap: nowrap; gap: 0.2rem 0.6rem; min-width: 0; }
     .chat-head h1 {
       margin: 0;
       font-size: 1.3rem;
       font-weight: 700;
       letter-spacing: -0.02em;
       line-height: 1.15;
-      overflow-wrap: anywhere;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      min-width: 0;
     }
     .badge {
       display: inline-flex;
@@ -441,6 +459,7 @@
       font-size: 0.76rem;
       font-weight: 600;
       color: var(--muted);
+      flex: none;
     }
     .status {
       display: flex;
@@ -449,11 +468,17 @@
       margin-top: 0.2rem;
       font-size: 0.84rem;
       color: var(--muted);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
     .dot { width: 0.5rem; height: 0.5rem; border-radius: 50%; background: var(--muted); flex: none; }
     .status[data-state="open"] .dot { background: var(--online); }
     .status[data-state="connecting"] .dot { background: var(--accent); }
-    .actions { display: flex; flex-wrap: wrap; gap: 0.1rem 1rem; justify-content: flex-end; }
+    /* The relocated actions now live inside the #room-info dialog, stacked and full-width
+       instead of squeezed into the header row. */
+    #room-info .row { flex-direction: column; align-items: flex-start; gap: 0.15rem; }
+    #room-info .row .link { padding: 0.5rem 0.15rem; }
 
     /* "Add to Home Screen" tip for iPhone and iPad, where notifications only work for an installed app */
     .install-tip {
@@ -785,7 +810,7 @@
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
             <span id="chat-back-label">Rooms</span>
           </button>
-          <div class="chat-head-main">
+          <button class="chat-head-main" type="button" id="room-info-open" aria-haspopup="dialog">
             <div class="title-row">
               <h1 id="room-title"></h1>
               <span class="badge" id="private-badge" hidden>
@@ -798,13 +823,7 @@
               <span id="status-text">Connecting…</span>
               <span id="online"></span>
             </div>
-          </div>
-          <div class="actions">
-            <button class="link" type="button" id="settings-btn" hidden>Room settings</button>
-            <button class="link profile-open" type="button">Profile</button>
-            <button class="link" type="button" id="copy">Copy invite link</button>
-            <button class="link" type="button" id="alerts-btn" aria-pressed="false">Alerts here: off</button>
-          </div>
+          </button>
         </div>
       </header>
 
@@ -876,6 +895,19 @@
 
       <p class="form-error" id="settings-msg" role="status"></p>
       <button class="link close" type="button" id="settings-close">Close</button>
+    </div>
+  </dialog>
+
+  <dialog id="room-info" aria-labelledby="room-info-title">
+    <div class="dlg">
+      <h2 id="room-info-title">Room info</h2>
+      <div class="row">
+        <button class="link" type="button" id="settings-btn" hidden>Room settings</button>
+        <button class="link profile-open" type="button">Profile</button>
+        <button class="link" type="button" id="copy">Copy invite link</button>
+        <button class="link" type="button" id="alerts-btn" aria-pressed="false">Alerts here: off</button>
+      </div>
+      <button class="link close" type="button" id="room-info-close">Close</button>
     </div>
   </dialog>
 
@@ -982,6 +1014,7 @@
       const statusEl = $("#status"), statusText = $("#status-text"), onlineEl = $("#online");
       const badgeEl = $("#private-badge"), roomTitle = $("#room-title"), settingsBtn = $("#settings-btn");
       const chatBackLabel = $("#chat-back-label");
+      const roomInfoDlg = $("#room-info"), roomInfoOpen = $("#room-info-open");
       const dlg = $("#settings"), pwForm = $("#pw-form"), pwState = $("#pw-state"), newPw = $("#new-pw");
       const pwSave = $("#pw-save"), pwRemove = $("#pw-remove"), settingsMsg = $("#settings-msg");
       const delHint = $("#del-hint"), delLabel = $("#del-label"), delConfirm = $("#del-confirm"), delBtn = $("#del-btn");
@@ -1932,6 +1965,7 @@
         pendingPassword = "";
         isPrivate = isOwner = false;
         if (dlg.open) dlg.close();
+        if (roomInfoDlg.open) roomInfoDlg.close();
         disconnect();
         clearMessages();
         unread = 0;
@@ -1974,6 +2008,7 @@
         clearMessages();
         session.clearPasswords();
         if (dlg.open) dlg.close();
+        if (roomInfoDlg.open) roomInfoDlg.close();
         if (profileDlg.open) profileDlg.close();
         avatarVersions.clear();
         myAvatar = null;
@@ -2241,6 +2276,11 @@
       // The one clear way out of an open chat on a phone: back to whichever list this
       // conversation belongs to (its label is kept in sync in applyRoom()).
       $("#chat-back").addEventListener("click", () => (convoType === "dm" ? showMessagesTab() : showRoomsTab()));
+
+      // Tapping the room name/status opens the info dialog, which holds the settings/profile/
+      // invite/alerts actions that used to be crammed into the header row (WhatsApp-style).
+      roomInfoOpen.addEventListener("click", () => roomInfoDlg.showModal());
+      $("#room-info-close").addEventListener("click", () => roomInfoDlg.close());
 
       // The sidebar's and the Messages screen's own "+ New message" buttons: the New message form
       $("#rail-new-dm").addEventListener("click", openNewMessage);
