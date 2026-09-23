@@ -223,7 +223,7 @@
         border-right: 1px solid var(--line);
         background: var(--surface-2);
       }
-      .my-rooms, .my-dms, #switch-room, #switch-dm { display: none; }
+      .my-rooms, .my-dms, .chat-back { display: none; }
     }
     .wordmark { display: flex; align-items: center; gap: 0.4rem; margin: 0; padding: 0.2rem 0.7rem 0.6rem; font-size: 1.2rem; font-weight: 700; letter-spacing: -0.02em; border-bottom: 1px solid var(--line); }
     .wordmark::before { content: ""; width: 0.55rem; height: 0.55rem; border-radius: 50%; background: var(--accent); flex: none; }
@@ -397,10 +397,31 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 1rem;
+      gap: 0.75rem;
       max-width: 62rem;
       margin-inline: auto;
     }
+    .chat-head-main { flex: 1; min-width: 0; }
+    /* The primary, unambiguous way out of an open conversation on a phone (no sidebar or bottom
+       tabs are visible while a chat is open - see show()). Kept visually distinct from the
+       secondary actions on the right so there's exactly one obvious answer to "how do I get back?" */
+    .chat-back {
+      display: flex;
+      align-items: center;
+      gap: 0.2rem;
+      flex: none;
+      margin: 0;
+      padding: 0.4rem 0.5rem 0.4rem 0.3rem;
+      border: 0;
+      background: none;
+      font: inherit;
+      font-weight: 600;
+      font-size: 0.9rem;
+      color: var(--muted);
+      cursor: pointer;
+      border-radius: 0.5rem;
+    }
+    .chat-back:hover, .chat-back:focus-visible { color: var(--ink); background: var(--bg); }
     .title-row { display: flex; align-items: center; flex-wrap: wrap; gap: 0.2rem 0.6rem; }
     .chat-head h1 {
       margin: 0;
@@ -760,7 +781,11 @@
     <section class="chat" id="chat" hidden>
       <header class="chat-head">
         <div class="chat-head-inner">
-          <div>
+          <button class="chat-back" type="button" id="chat-back">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+            <span id="chat-back-label">Rooms</span>
+          </button>
+          <div class="chat-head-main">
             <div class="title-row">
               <h1 id="room-title"></h1>
               <span class="badge" id="private-badge" hidden>
@@ -779,8 +804,6 @@
             <button class="link profile-open" type="button">Profile</button>
             <button class="link" type="button" id="copy">Copy invite link</button>
             <button class="link" type="button" id="alerts-btn" aria-pressed="false">Alerts here: off</button>
-            <button class="link" type="button" id="switch-dm">Messages</button>
-            <button class="link" type="button" id="switch-room">Rooms</button>
           </div>
         </div>
       </header>
@@ -958,6 +981,7 @@
       const textEl = $("#text"), listEl = $("#messages"), emptyEl = $("#empty"), noticeEl = $("#notice");
       const statusEl = $("#status"), statusText = $("#status-text"), onlineEl = $("#online");
       const badgeEl = $("#private-badge"), roomTitle = $("#room-title"), settingsBtn = $("#settings-btn");
+      const chatBackLabel = $("#chat-back-label");
       const dlg = $("#settings"), pwForm = $("#pw-form"), pwState = $("#pw-state"), newPw = $("#new-pw");
       const pwSave = $("#pw-save"), pwRemove = $("#pw-remove"), settingsMsg = $("#settings-msg");
       const delHint = $("#del-hint"), delLabel = $("#del-label"), delConfirm = $("#del-confirm"), delBtn = $("#del-btn");
@@ -986,6 +1010,7 @@
 
       function applyRoom() {
         updateTitle();
+        chatBackLabel.textContent = convoType === "dm" ? "Messages" : "Rooms";
         if (convoType === "dm") {
           roomTitle.textContent = peerName || peerKey;
           badgeEl.hidden = true;
@@ -2206,16 +2231,17 @@
         enterDM(target.dataset.dmTarget, target.dataset.dmName || "");
       });
 
-      // "Rooms" in the chat header, and "Choose another room": back to the Rooms list
-      $("#switch-room").addEventListener("click", showRoomsTab);
+      // "Choose another room": back to the Rooms list
       $("#empty-pick").addEventListener("click", showRoomsTab);
       // The sidebar's and the Rooms screen's own "+ New room" buttons: the New room form
       $("#rail-new").addEventListener("click", openNewRoom);
       $("#new-room-btn").addEventListener("click", openNewRoom);
       $("#new-room-back").addEventListener("click", showRoomsTab);
 
-      // "Messages" in the chat header: back to the Messages list
-      $("#switch-dm").addEventListener("click", showMessagesTab);
+      // The one clear way out of an open chat on a phone: back to whichever list this
+      // conversation belongs to (its label is kept in sync in applyRoom()).
+      $("#chat-back").addEventListener("click", () => (convoType === "dm" ? showMessagesTab() : showRoomsTab()));
+
       // The sidebar's and the Messages screen's own "+ New message" buttons: the New message form
       $("#rail-new-dm").addEventListener("click", openNewMessage);
       $("#new-message-btn").addEventListener("click", openNewMessage);
