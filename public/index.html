@@ -224,7 +224,6 @@
         background: var(--surface-2);
       }
       .my-rooms, .my-dms, #switch-room, #switch-dm { display: none; }
-      #join h1 { display: none; }
     }
     .wordmark { display: flex; align-items: center; gap: 0.4rem; margin: 0; padding: 0.2rem 0.7rem 0.6rem; font-size: 1.2rem; font-weight: 700; letter-spacing: -0.02em; border-bottom: 1px solid var(--line); }
     .wordmark::before { content: ""; width: 0.55rem; height: 0.55rem; border-radius: 50%; background: var(--accent); flex: none; }
@@ -248,6 +247,125 @@
       transition: background 0.12s ease, border-color 0.12s ease;
     }
     .rail-new:hover { background: var(--surface); border-color: var(--mine); }
+
+    /* Section tabs: Rooms / Messages / Account. On a wide screen these live at the top of the
+       sidebar and swap which list it shows below; on a phone they're a bottom bar and swap the
+       whole screen. Splitting things this way means each area gets its own space to grow into,
+       instead of every list and form sharing one crowded screen. */
+    .rail-tabs { display: flex; gap: 0.25rem; padding: 0 0.1rem; flex: none; }
+    .rail-tab {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.25rem;
+      padding: 0.5rem 0.2rem;
+      border: 0;
+      border-radius: var(--r-md);
+      background: none;
+      color: var(--muted);
+      font: inherit;
+      font-size: 0.68rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.12s ease, color 0.12s ease;
+    }
+    .rail-tab:hover { background: var(--bg); }
+    .rail-tab[aria-current="true"] { background: var(--surface); color: var(--mine); box-shadow: var(--shadow-sm); }
+    .rail-account-panel .hint { margin: 0; padding: 0 0.2rem; }
+    .rail-section .rail-new { flex: none; margin-top: 0.6rem; }
+
+    .tabbar {
+      display: flex;
+      flex: none;
+      border-top: 1px solid var(--line);
+      background: var(--surface);
+      padding-bottom: env(safe-area-inset-bottom, 0px);
+    }
+    .tabbar button {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.2rem;
+      padding: 0.5rem 0.3rem 0.45rem;
+      border: 0;
+      background: none;
+      color: var(--muted);
+      font: inherit;
+      font-size: 0.7rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .tabbar button[aria-current="true"] { color: var(--mine); }
+    @media (min-width: 800px) {
+      .tabbar { display: none; }
+    }
+
+    /* Rooms, Messages and Account each get their own screen (instead of two forms stacked on one
+       screen), plus separate "New room" and "New message" screens so those two actions don't land
+       in the same place. */
+    .tab-screen {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      padding: min(4vh, 1.75rem) clamp(1rem, 3vw, 2rem) 1.25rem;
+    }
+    .tab-screen-inner { width: 100%; max-width: 30rem; margin: 0 auto; }
+    .tab-screen h1 { margin: 0 0 0.4rem; font-size: clamp(1.7rem, 6vw, 2.3rem); font-weight: 700; letter-spacing: -0.04em; }
+    .tab-screen .lede { margin: 0 0 1.25rem; color: var(--muted); }
+    .tab-screen .my-rooms, .tab-screen .my-dms { margin: 0 0 1.25rem; }
+    .tab-screen-cta { width: 100%; justify-content: center; }
+
+    .tab-back {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      margin: 0 0 1rem;
+      padding: 0.25rem 0.3rem;
+      background: none;
+      border: 0;
+      font: inherit;
+      font-weight: 600;
+      font-size: 0.9rem;
+      color: var(--muted);
+      cursor: pointer;
+    }
+    .tab-back:hover { color: var(--ink); }
+
+    /* The join / message forms, each now on its own screen instead of stacked together */
+    .join-card h2 { margin: 0 0 0.25rem; font-size: 1.05rem; letter-spacing: -0.01em; }
+    .join-card .lede { margin: 0 0 1rem; color: var(--muted); max-width: 34ch; }
+    .join-card label { display: block; margin: 1rem 0 0.35rem; font-weight: 600; font-size: 0.92rem; }
+    .join-card input { width: 100%; }
+    .join-card .btn { width: 100%; margin-top: 1.35rem; padding: 0.8rem 1.1rem; }
+
+    /* Account screen: profile picture and session for now, with room to grow */
+    .account-card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.6rem;
+      padding: 1.75rem 1.5rem;
+      margin-bottom: 1.25rem;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--r-lg);
+      box-shadow: var(--shadow-sm);
+      text-align: center;
+    }
+    .account-name { margin: 0; font-size: 1.15rem; font-weight: 700; }
+    .account-section {
+      padding: 1.25rem 1.5rem;
+      margin-bottom: 1.25rem;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--r-lg);
+      box-shadow: var(--shadow-sm);
+    }
+    .account-section h2 { margin: 0 0 0.6rem; font-size: 0.95rem; }
 
     /* Direct-message rows: an avatar, then a name and a one-line preview stacked, then a time and an
        unread dot. Built on top of .room, which already gives the button its layout, hover and
@@ -485,25 +603,45 @@
 <body>
   <nav class="rail" id="rail" aria-label="Your rooms and messages" hidden>
     <p class="wordmark">betachat</p>
-    <div class="rail-section">
+
+    <div class="rail-tabs" role="tablist" aria-label="Sections">
+      <button class="rail-tab" type="button" data-tab="rooms" aria-current="true">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9h16M4 15h16M10 3 8 21M16 3l-2 18"/></svg>
+        Rooms
+      </button>
+      <button class="rail-tab" type="button" data-tab="messages" aria-current="false">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5Z"/></svg>
+        Messages
+      </button>
+      <button class="rail-tab" type="button" data-tab="account" aria-current="false">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+        Account
+      </button>
+    </div>
+
+    <div class="rail-section" data-rail-panel="rooms">
       <p class="rail-heading">Rooms</p>
       <ul class="room-list" data-room-list></ul>
       <p class="rail-empty" id="rail-empty" hidden>Rooms you join will show up here.</p>
+      <button class="rail-new" type="button" id="rail-new">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+        New room
+      </button>
     </div>
-    <div class="rail-section">
+
+    <div class="rail-section" data-rail-panel="messages" hidden>
       <p class="rail-heading">Messages</p>
       <ul class="room-list" data-dm-list></ul>
       <p class="rail-empty" data-dms-empty hidden>Conversations you start will show up here.</p>
-    </div>
-    <div class="rail-actions">
-      <button class="rail-new" type="button" id="rail-new">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-        Join or create a room
-      </button>
       <button class="rail-new" type="button" id="rail-new-dm">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
         New message
       </button>
+    </div>
+
+    <div class="rail-section rail-account-panel" data-rail-panel="account" hidden>
+      <p class="rail-heading">Account</p>
+      <p class="hint">Your profile picture, username and session settings are on the Account screen — open it any time from this tab.</p>
     </div>
   </nav>
 
@@ -527,21 +665,27 @@
       </form>
     </section>
 
-    <section class="join" id="join" hidden>
-      <div class="join-panel">
-        <h1>betachat</h1>
-        <p class="me">Signed in as <span class="avatar sm" id="me-avatar" aria-hidden="true"></span><strong id="me-name"></strong> · <button class="link profile-open" type="button">Profile</button> · <button class="link" type="button" id="logout">Log out</button></p>
-
-        <section class="my-rooms" id="my-rooms" aria-labelledby="my-rooms-title" hidden>
+    <section class="tab-screen" id="rooms-screen" hidden aria-labelledby="rooms-title">
+      <div class="tab-screen-inner">
+        <h1 id="rooms-title">Rooms</h1>
+        <p class="lede">Chat rooms you're part of. Anyone with the link can find a public one; private rooms need a password.</p>
+        <section class="my-rooms" id="my-rooms" aria-labelledby="my-rooms-title">
           <h2 id="my-rooms-title">Your rooms</h2>
           <ul class="room-list" data-room-list></ul>
         </section>
+        <button class="rail-new tab-screen-cta" type="button" id="new-room-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+          New room
+        </button>
+      </div>
+    </section>
 
-        <section class="my-rooms my-dms" id="my-dms" aria-labelledby="my-dms-title" hidden>
-          <h2 id="my-dms-title">Direct messages</h2>
-          <ul class="room-list" data-dm-list></ul>
-        </section>
-
+    <section class="tab-screen" id="new-room-screen" hidden>
+      <div class="tab-screen-inner">
+        <button class="tab-back" type="button" id="new-room-back">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+          Rooms
+        </button>
         <div class="join-card">
           <form id="join-form" novalidate>
             <h2>Join or create a room</h2>
@@ -558,7 +702,30 @@
             <button class="btn" type="submit" id="join-btn">Join room</button>
           </form>
         </div>
+      </div>
+    </section>
 
+    <section class="tab-screen" id="messages-screen" hidden aria-labelledby="messages-title">
+      <div class="tab-screen-inner">
+        <h1 id="messages-title">Messages</h1>
+        <p class="lede">Private, one-to-one conversations with other betachat accounts.</p>
+        <section class="my-rooms my-dms" id="my-dms" aria-labelledby="my-dms-title">
+          <h2 id="my-dms-title">Direct messages</h2>
+          <ul class="room-list" data-dm-list></ul>
+        </section>
+        <button class="rail-new tab-screen-cta" type="button" id="new-message-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+          New message
+        </button>
+      </div>
+    </section>
+
+    <section class="tab-screen" id="new-message-screen" hidden>
+      <div class="tab-screen-inner">
+        <button class="tab-back" type="button" id="new-message-back">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+          Messages
+        </button>
         <div class="join-card">
           <form id="dm-form" novalidate>
             <h2>Message someone</h2>
@@ -571,6 +738,22 @@
             <button class="btn" type="submit" id="dm-btn">Message</button>
           </form>
         </div>
+      </div>
+    </section>
+
+    <section class="tab-screen" id="account-screen" hidden aria-labelledby="account-title">
+      <div class="tab-screen-inner">
+        <h1 id="account-title">Account</h1>
+        <div class="account-card">
+          <span class="avatar xl" id="me-avatar" aria-hidden="true"></span>
+          <p class="account-name" id="me-name"></p>
+          <button class="btn profile-open" type="button">Change profile picture</button>
+        </div>
+        <div class="account-section">
+          <h2>Session</h2>
+          <button class="link" type="button" id="logout">Log out</button>
+        </div>
+        <p class="hint">More account settings will land here as betachat grows.</p>
       </div>
     </section>
 
@@ -628,6 +811,21 @@
         <button class="btn" type="submit">Send</button>
       </form>
     </section>
+
+    <nav class="tabbar" id="tabbar" aria-label="Sections" hidden>
+      <button type="button" class="tab-btn" data-tab="rooms" aria-current="true">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9h16M4 15h16M10 3 8 21M16 3l-2 18"/></svg>
+        Rooms
+      </button>
+      <button type="button" class="tab-btn" data-tab="messages" aria-current="false">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5Z"/></svg>
+        Messages
+      </button>
+      <button type="button" class="tab-btn" data-tab="account" aria-current="false">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+        Account
+      </button>
+    </nav>
 
   </main>
 
@@ -743,7 +941,15 @@
       let renderedDMs = null;
 
       // ---- Elements ------------------------------------------------------
-      const views = { auth: $("#auth"), join: $("#join"), chat: $("#chat") };
+      const views = {
+        auth: $("#auth"),
+        rooms: $("#rooms-screen"),
+        newRoom: $("#new-room-screen"),
+        messages: $("#messages-screen"),
+        newMessage: $("#new-message-screen"),
+        account: $("#account-screen"),
+        chat: $("#chat"),
+      };
       const authForm = $("#auth-form"), authUser = $("#auth-user"), authPw = $("#auth-pw");
       const authLede = $("#auth-lede"), authHint = $("#auth-hint"), authError = $("#auth-error"), authBtn = $("#auth-btn");
       const authSwitchText = $("#auth-switch-text"), authSwitch = $("#auth-switch");
@@ -764,6 +970,14 @@
       const emptyNote = $("#empty-note"), emptyRoom = $("#empty-room");
       const myDMsBox = $("#my-dms"), dmForm = $("#dm-form"), dmUserInput = $("#dm-user");
       const dmError = $("#dm-error"), dmBtn = $("#dm-btn");
+      const tabbar = $("#tabbar");
+      const tabButtons = [...document.querySelectorAll(".tab-btn")];
+      const railTabs = [...document.querySelectorAll(".rail-tab")];
+      const railPanels = {
+        rooms: document.querySelector('[data-rail-panel="rooms"]'),
+        messages: document.querySelector('[data-rail-panel="messages"]'),
+        account: document.querySelector('[data-rail-panel="account"]'),
+      };
 
       // What to call the current conversation in headings, alerts and notifications.
       function convoLabel() {
@@ -1499,13 +1713,44 @@
       }
 
       // ---- Views ---------------------------------------------------------
+      // Which tab (Rooms / Messages / Account) a given screen belongs to, for highlighting the
+      // right tab in the bottom bar (phone) — "New room" still counts as the Rooms tab, and so on.
+      const SCREEN_TAB = { rooms: "rooms", newRoom: "rooms", messages: "messages", newMessage: "messages", account: "account" };
+
       function show(name) {
         for (const [key, el] of Object.entries(views)) el.hidden = key !== name;
         rail.hidden = name === "auth"; // (only wide screens ever show it)
+        tabbar.hidden = name === "auth" || name === "chat"; // full-screen for signing in and for an open chat
+        const tab = SCREEN_TAB[name] || null;
+        tabButtons.forEach((btn) => btn.setAttribute("aria-current", String(!!tab && btn.dataset.tab === tab)));
         renderRooms();
         renderDMs();
-        if (name === "join" && myKey) loadDMs(); // the picker is exactly when a stale preview would show
+        if (tab && myKey) loadDMs(); // any of these screens is exactly when a stale preview would show
       }
+
+      // The sidebar's own Rooms / Messages / Account tabs: pick which section of the rail is
+      // showing. Independent of show() above — switching rail tabs never disturbs an open chat.
+      function setRailTab(tab) {
+        railTabs.forEach((btn) => btn.setAttribute("aria-current", String(btn.dataset.tab === tab)));
+        for (const [key, panel] of Object.entries(railPanels)) panel.hidden = key !== tab;
+      }
+      railTabs.forEach((btn) =>
+        btn.addEventListener("click", () => {
+          setRailTab(btn.dataset.tab);
+          if (btn.dataset.tab === "account") show("account"); // Account is a destination, not just a list to browse
+        })
+      );
+      tabButtons.forEach((btn) =>
+        btn.addEventListener("click", () => {
+          if (btn.dataset.tab === "rooms") showRoomsTab();
+          else if (btn.dataset.tab === "messages") showMessagesTab();
+          else showAccountTab();
+        })
+      );
+
+      function showRoomsTab() { show("rooms"); }
+      function showMessagesTab() { show("messages"); }
+      function showAccountTab() { show("account"); }
 
       let registering = false;
       function setAuthMode(register) {
@@ -1530,28 +1775,38 @@
         authUser.focus();
       }
 
-      // `focusEl` null means "wherever suits": the room name box on a wide screen, but on a phone the list
-      // (an open keyboard would cover it), unless there are no rooms to pick from yet.
-      function showJoin(message = "", focusEl = roomInput) {
-        show("join");
+      // The "New room" screen, reused both for a fresh attempt and for showing an error on the
+      // room you were already trying to join (so its details stay filled in).
+      function showRoomScreen(message = "", focusEl = roomInput) {
+        show("newRoom");
         roomInput.value = room;
         pwInput.value = password;
         joinError.textContent = message;
-        dmError.textContent = "";
         joinBtn.disabled = false;
         joinBtn.textContent = "Join room";
-        if (!focusEl) {
-          const wide = window.matchMedia("(min-width: 800px)").matches;
-          focusEl = (!wide && (myRoomsBox.querySelector('.room[aria-current="true"]') || myRoomsBox.querySelector(".room"))) || roomInput;
-        }
         focusEl.focus();
         if (focusEl.type === "text") focusEl.select();
       }
 
-      // "Rooms" (phone) and "Join or create a room" (sidebar): the list, and a blank form for a room that isn't in it
-      function openRoomPicker() {
-        showJoin("", null);
-        roomInput.value = pwInput.value = "";
+      // The "+ New room" button (sidebar or the Rooms screen): a genuinely blank form
+      function openNewRoom() {
+        showRoomScreen("", roomInput);
+        roomInput.value = "";
+        pwInput.value = "";
+      }
+
+      // The "New message" screen, same idea as showRoomScreen above
+      function showMessageScreen(message = "", focusEl = dmUserInput) {
+        show("newMessage");
+        dmError.textContent = message;
+        if (dmBtn) { dmBtn.disabled = false; dmBtn.textContent = "Message"; }
+        focusEl.focus();
+      }
+
+      // The "+ New message" button (sidebar or the Messages screen): a blank form
+      function openNewMessage() {
+        dmUserInput.value = "";
+        showMessageScreen("", dmUserInput);
       }
 
       function showChat() {
@@ -1620,10 +1875,7 @@
           awaitingJoin = false;
           disconnect();
           setStatus("closed");
-          if (dmBtn) { dmBtn.disabled = false; dmBtn.textContent = "Message"; }
-          showJoin();
-          dmError.textContent = data.message;
-          dmUserInput.focus();
+          showMessageScreen(data.message, dmUserInput);
           return;
         }
         // A saved password for a room that has since become public: just join it without one
@@ -1643,7 +1895,7 @@
         }
         disconnect();
         setStatus("closed");
-        showJoin(data.message, data.code === "room_public" ? roomInput : pwInput);
+        showRoomScreen(data.message, data.code === "room_public" ? roomInput : pwInput);
       }
 
       // The server removed me from the room (password changed, or room deleted)
@@ -1660,7 +1912,7 @@
         unread = 0;
         applyRoom();
         setStatus("closed");
-        showJoin(message, focusEl);
+        showRoomScreen(message, focusEl);
       }
 
       function onRoomUpdated(data) {
@@ -1954,16 +2206,20 @@
         enterDM(target.dataset.dmTarget, target.dataset.dmName || "");
       });
 
-      $("#switch-room").addEventListener("click", openRoomPicker);
-      $("#rail-new").addEventListener("click", openRoomPicker);
-      $("#empty-pick").addEventListener("click", openRoomPicker);
+      // "Rooms" in the chat header, and "Choose another room": back to the Rooms list
+      $("#switch-room").addEventListener("click", showRoomsTab);
+      $("#empty-pick").addEventListener("click", showRoomsTab);
+      // The sidebar's and the Rooms screen's own "+ New room" buttons: the New room form
+      $("#rail-new").addEventListener("click", openNewRoom);
+      $("#new-room-btn").addEventListener("click", openNewRoom);
+      $("#new-room-back").addEventListener("click", showRoomsTab);
 
-      function openDMPicker() {
-        dmUserInput.value = "";
-        showJoin("", dmUserInput);
-      }
-      $("#switch-dm").addEventListener("click", openDMPicker);
-      $("#rail-new-dm").addEventListener("click", openDMPicker);
+      // "Messages" in the chat header: back to the Messages list
+      $("#switch-dm").addEventListener("click", showMessagesTab);
+      // The sidebar's and the Messages screen's own "+ New message" buttons: the New message form
+      $("#rail-new-dm").addEventListener("click", openNewMessage);
+      $("#new-message-btn").addEventListener("click", openNewMessage);
+      $("#new-message-back").addEventListener("click", showMessagesTab);
 
       const copyBtn = $("#copy");
       copyBtn.addEventListener("click", async () => {
