@@ -40,6 +40,10 @@ const PUSH_BODY_CHARS = 140;
 // because only the Worker can reach them; the Worker overwrites whatever the client sent.
 const USER_HEADER = "X-Betachat-User";
 const ROOM_HEADER = "X-Betachat-Room"; // likewise: the room name, which a Durable Object can't read from its own id
+const PEER_HEADER = "X-Betachat-Peer"; // direct messages: who the sender asked to talk to, lowercased; the DM room looks the account up itself
+
+// Direct messages
+const DM_MAX_USERNAME = 20; // matches USERNAME_RE's own limit; just a length cap before any lookup happens
 
 // Private rooms
 const MIN_PASSWORD = 6;
@@ -245,6 +249,31 @@ export default {
       return stub.fetch(new Request(request, { headers }));
     }
 
+    if (url.pathname === "/ws-dm") {
+      if (request.headers.get("Upgrade") !== "websocket") {
+        return new Response("Expected a WebSocket connection", { status: 426 });
+      }
+      if (!sameOrigin(request, url)) {
+        return new Response("Forbidden", { status: 403 });
+      }
+
+      const token = getCookie(request, COOKIE);
+      const session = token ? await userDirectory(env).whoami(token) : null;
+      if (!session) return new Response("Log in first", { status: 401 });
+
+      // Whether this username exists (and isn't the caller themself) is checked once the socket is open,
+      // the same way a room checks a password after accepting the connection: see DMRoom.join(). All that
+      // matters here is picking the one DMRoom both people will land in, which needs no lookup at all -
+      // it's just the two lowercased names, in a fixed order, so it doesn't matter who messages whom first.
+      const peerKey = (url.searchParams.get("with") || "").trim().toLowerCase().slice(0, DM_MAX_USERNAME);
+      const pairName = "dm:" + [session.key, peerKey].sort().join(":");
+      const stub = env.DM_ROOM.get(env.DM_ROOM.idFromName(pairName));
+      const headers = new Headers(request.headers);
+      headers.set(USER_HEADER, session.name);
+      headers.set(PEER_HEADER, peerKey);
+      return stub.fetch(new Request(request, { headers }));
+    }
+
     if (url.pathname.startsWith("/api/")) return handleApi(request, env, url);
 
     return new Response("Not found", { status: 404 });
@@ -261,6 +290,15 @@ async function handleApi(request, env, url) {
     return session
       ? json({ username: session.name, avatar: session.avatar })
       : json({ error: "Not logged in." }, 401);
+  }
+
+  // Every direct-message conversation this person has ever sent or received a message in,
+  // most recently active first. See UserDirectory.listConversations for the shape of each entry.
+  if (url.pathname === "/api/dm/list" && request.method === "GET") {
+    const token = getCookie(request, COOKIE);
+    const session = token ? await users.whoami(token) : null;
+    if (!session) return json({ error: "Not logged in." }, 401);
+    return json({ conversations: await users.listConversations(session.key) });
   }
 
   // Anyone logged in can look at anyone's picture (the name is the lookup key)
@@ -409,6 +447,30 @@ export class UserDirectory extends DurableObject {
         bucket TEXT PRIMARY KEY,
         count  INTEGER NOT NULL,
         since  INTEGER NOT NULL  -- start of the current window
+      )
+    `);
+
+    // One row per pair of people who have exchanged direct messages, so "your conversations" can be
+    // listed without asking every DMRoom object. `key_a` is always the alphabetically-earlier of the
+    // two lowercase usernames, so each pair has exactly one row regardless of who messaged whom first.
+    this.sql.exec(`
+      CREATE TABLE IF NOT EXISTS dm_pairs (
+        pair        TEXT PRIMARY KEY, -- "key_a:key_b", also how DMRoom objects are named
+        key_a       TEXT NOT NULL,
+        key_b       TEXT NOT NULL,
+        last_ts     INTEGER NOT NULL,
+        last_text   TEXT NOT NULL,
+        last_sender TEXT NOT NULL
+      )
+    `);
+    // How far into a conversation each of its two people has read, so the other one's messages can be
+    // marked unread. A pair with no row here for someone just means they've read none of it yet.
+    this.sql.exec(`
+      CREATE TABLE IF NOT EXISTS dm_reads (
+        pair TEXT NOT NULL,
+        key  TEXT NOT NULL,
+        ts   INTEGER NOT NULL,
+        PRIMARY KEY (pair, key)
       )
     `);
   }
@@ -566,6 +628,78 @@ export class UserDirectory extends DurableObject {
 
   userRow(key) {
     return this.sql.exec("SELECT key, name, salt, hash, iter FROM users WHERE key = ?", key).toArray()[0];
+  }
+
+  // ---- Direct messages -----------------------------------------------------
+  // The public shell of an account: whether it exists at all, its real-cased name, and its current
+  // picture. This is what lets someone start a conversation with a username before anything else about
+  // that account is trusted - the DMRoom itself calls this to decide whether a join is even legitimate.
+  profile(key) {
+    if (typeof key !== "string" || !key || key.length > DM_MAX_USERNAME) return null;
+    const row = this.sql.exec("SELECT name FROM users WHERE key = ?", key).toArray()[0];
+    return row ? { key, name: row.name, avatar: this.avatarVersion(key) } : null;
+  }
+
+  pairOf(keyA, keyB) {
+    const sorted = [keyA, keyB].sort();
+    return { pair: sorted.join(":"), a: sorted[0], b: sorted[1] };
+  }
+
+  // Called by a DMRoom whenever a message is sent, so the conversation surfaces in both people's lists
+  // in the right order with the right preview. The sender is also marked as having read up to their own
+  // message, which is what keeps a conversation from showing as unread to the person who just sent it.
+  touchConversation(keyA, keyB, senderKey, text, ts) {
+    const { pair, a, b } = this.pairOf(keyA, keyB);
+    this.sql.exec(
+      `INSERT INTO dm_pairs (pair, key_a, key_b, last_ts, last_text, last_sender) VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(pair) DO UPDATE SET last_ts = excluded.last_ts, last_text = excluded.last_text, last_sender = excluded.last_sender`,
+      pair, a, b, ts, text, senderKey
+    );
+    this.markRead(keyA, keyB, senderKey, ts);
+  }
+
+  // `ts` only ever moves a person's read marker forward, so a "read" notice that arrives out of order
+  // (a slow request racing a newer message) can't rewind it and make something unread again.
+  markRead(keyA, keyB, readerKey, ts) {
+    const { pair } = this.pairOf(keyA, keyB);
+    this.sql.exec(
+      `INSERT INTO dm_reads (pair, key, ts) VALUES (?, ?, ?)
+       ON CONFLICT(pair, key) DO UPDATE SET ts = MAX(ts, excluded.ts)`,
+      pair, readerKey, ts
+    );
+  }
+
+  // Every conversation this person has sent or received a message in, most recent first. The other
+  // person's current name and picture are looked up fresh each time (not copied into dm_pairs), so a
+  // changed picture or a name from before accounts had a canonical case always shows up right away.
+  listConversations(key) {
+    const rows = this.sql
+      .exec(
+        `SELECT p.pair AS pair,
+                CASE WHEN p.key_a = ? THEN p.key_b ELSE p.key_a END AS peer_key,
+                p.last_ts AS last_ts, p.last_text AS last_text, p.last_sender AS last_sender,
+                COALESCE(r.ts, 0) AS read_ts
+         FROM dm_pairs p
+         LEFT JOIN dm_reads r ON r.pair = p.pair AND r.key = ?
+         WHERE p.key_a = ? OR p.key_b = ?
+         ORDER BY p.last_ts DESC
+         LIMIT 200`,
+        key, key, key, key
+      )
+      .toArray();
+
+    return rows.map((row) => {
+      const peer = this.sql.exec("SELECT name FROM users WHERE key = ?", row.peer_key).toArray()[0];
+      return {
+        peerKey: row.peer_key,
+        peer: peer ? peer.name : row.peer_key, // the account is never deleted, but fall back just in case
+        avatar: this.avatarVersion(row.peer_key),
+        lastText: row.last_text,
+        lastTs: row.last_ts,
+        lastMine: row.last_sender === key,
+        unread: row.last_sender !== key && row.last_ts > row.read_ts,
+      };
+    });
   }
 
   // ---- Attempt counters (fixed windows) -----------------------------------
@@ -1166,6 +1300,341 @@ export class ChatRoom extends DurableObject {
   }
 
   // `exceptSid`: skip the socket that caused this (it already knows)
+  broadcast(payload, exceptSid = null) {
+    const message = JSON.stringify(payload);
+    for (const socket of this.liveSockets()) {
+      if (exceptSid && (socket.deserializeAttachment() || {}).sid === exceptSid) continue;
+      try {
+        socket.send(message);
+      } catch {}
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Durable Object: one instance per pair of people direct-messaging each other. Named from both
+// lowercase usernames sorted together, so it doesn't matter who messages whom first - they land in the
+// same place. Deliberately a thinner version of ChatRoom: no password, no owner, no settings, and never
+// more than two people, so most of a room's moving parts (private/public, delete, kicking everyone on a
+// password change) simply don't apply here.
+//
+// Who someone is comes from their login, exactly as in ChatRoom; who they are allowed to talk to in
+// this particular object comes from the Worker's choice of which object to open (see PEER_HEADER above),
+// but *whether that person's account actually exists* is only checked once the socket is open, in
+// join() below - the same moment ChatRoom checks a private room's password.
+//
+// Protocol
+//   client -> server  {type:"join"}                       must be sent first
+//   client -> server  {type:"message", text}
+//   client -> server  {type:"avatar_updated"}              "I changed my picture"
+//   client -> server  {type:"typing", typing:true|false}
+//   client -> server  {type:"away", away:true|false}
+//   client -> server  {type:"push_subscribe", subscription}
+//   client -> server  {type:"push_unsubscribe", endpoint}
+//   server -> client  {type:"joined", peer, peerKey, peerAvatar}   then "history", "presence"
+//   server -> client  {type:"join_error", code, message}   socket is closed
+//   server -> client  {type:"avatar", cid, v}
+//   server -> client  {type:"typing", cid, name, typing}
+//   server -> client  {type:"message" | "presence" | "error", ...}
+// ---------------------------------------------------------------------------
+export class DMRoom extends DurableObject {
+  constructor(ctx, env) {
+    super(ctx, env);
+    this.sql = ctx.storage.sql;
+    this.avatarWaiting = new Set();
+    this.sql.exec(`
+      CREATE TABLE IF NOT EXISTS messages (
+        id   INTEGER PRIMARY KEY AUTOINCREMENT,
+        cid  TEXT    NOT NULL,
+        name TEXT    NOT NULL,
+        text TEXT    NOT NULL,
+        ts   INTEGER NOT NULL
+      )
+    `);
+    // Devices to notify when their owner isn't watching this conversation. Same shape as ChatRoom's,
+    // just without a room-wide cap: a conversation only ever has two people in it.
+    this.sql.exec(`
+      CREATE TABLE IF NOT EXISTS push_subs (
+        endpoint TEXT PRIMARY KEY,
+        cid      TEXT    NOT NULL,
+        p256dh   TEXT    NOT NULL,
+        auth     TEXT    NOT NULL,
+        created  INTEGER NOT NULL
+      )
+    `);
+  }
+
+  async fetch(request) {
+    const user = request.headers.get(USER_HEADER);
+    if (!user) return new Response("Log in first", { status: 401 });
+
+    const { 0: client, 1: server } = new WebSocketPair();
+    this.ctx.acceptWebSocket(server);
+    server.serializeAttachment({
+      authed: false,
+      sid: crypto.randomUUID(),
+      user,
+      key: user.toLowerCase(),
+      peerInput: request.headers.get(PEER_HEADER) || "", // unverified until join() looks it up
+      ip: request.headers.get("CF-Connecting-IP") || "unknown",
+      origin: new URL(request.url).origin,
+      away: false,
+    });
+
+    return new Response(null, { status: 101, webSocket: client });
+  }
+
+  async webSocketMessage(ws, raw) {
+    if (typeof raw !== "string" || raw.length > 4096) return;
+
+    let data;
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      return;
+    }
+    if (!data || typeof data !== "object") return;
+
+    if (data.type === "join") {
+      await this.join(ws);
+      return;
+    }
+
+    const meta = ws.deserializeAttachment() || {};
+    if (!meta.authed || !meta.key) return;
+
+    switch (data.type) {
+      case "message":
+        return this.postMessage(ws, meta, data);
+      case "avatar_updated":
+        return this.avatarUpdated(ws, meta);
+      case "typing":
+        if (data.typing === true || data.typing === false) this.typing(ws, meta, data.typing);
+        return;
+      case "away":
+        if (typeof data.away === "boolean" && data.away !== !!meta.away) {
+          ws.serializeAttachment({ ...meta, away: data.away });
+          if (!data.away) await this.markRead(meta); // came back to look: whatever was waiting is now read
+        }
+        return;
+      case "push_subscribe":
+        return this.pushSubscribe(ws, meta, data.subscription);
+      case "push_unsubscribe":
+        if (typeof data.endpoint === "string" && data.endpoint.length <= 1000) {
+          this.sql.exec("DELETE FROM push_subs WHERE endpoint = ? AND cid = ?", data.endpoint, meta.key);
+        }
+        return;
+    }
+  }
+
+  // ---- Joining --------------------------------------------------------------
+  // Unlike a room, there's no password to check - just whether the username the sender asked for is a
+  // real account, and isn't their own. Both are cheap enough to check on every join rather than trusting
+  // whatever the last person here already proved, since accounts (unlike room passwords) never change
+  // in a way that would make an old answer wrong.
+  async join(ws) {
+    const meta = ws.deserializeAttachment() || {};
+    if (meta.authed) return;
+
+    const peerKey = String(meta.peerInput || "").trim().toLowerCase().slice(0, DM_MAX_USERNAME);
+    if (!peerKey || peerKey === meta.key) {
+      return this.reject(ws, "no_such_user", "You can't start a conversation with yourself.");
+    }
+    const profile = await this.env.USERS.get(this.env.USERS.idFromName("global")).profile(peerKey);
+    if (!profile) {
+      return this.reject(ws, "no_such_user", "There's no betachat account with that username.");
+    }
+
+    ws.serializeAttachment({ ...meta, authed: true, peerKey, peerName: profile.name });
+
+    const history = this.sql
+      .exec("SELECT id, cid, name, text, ts FROM messages ORDER BY id DESC LIMIT ?", HISTORY_LIMIT)
+      .toArray()
+      .reverse();
+    ws.send(JSON.stringify({ type: "joined", peer: profile.name, peerKey, peerAvatar: profile.avatar ?? null }));
+    ws.send(JSON.stringify({ type: "history", messages: history }));
+    this.broadcastPresence();
+    await this.markRead({ ...meta, peerKey }); // opening the conversation reads whatever was waiting
+  }
+
+  reject(ws, code, message) {
+    try {
+      ws.send(JSON.stringify({ type: "join_error", code, message }));
+      ws.close(1008, "join rejected");
+    } catch {}
+  }
+
+  async markRead(meta) {
+    try {
+      await this.env.USERS.get(this.env.USERS.idFromName("global")).markRead(meta.key, meta.peerKey, meta.key, Date.now());
+    } catch {}
+  }
+
+  // Same rules as ChatRoom.typing: rate-limited, never stored, cleared by a message or a closed socket.
+  typing(ws, meta, on) {
+    const now = Date.now();
+    if (on) {
+      if (meta.typing && now - (meta.lastTyping || 0) < TYPING_GAP_MS) return;
+      ws.serializeAttachment({ ...meta, typing: true, lastTyping: now });
+    } else {
+      if (!meta.typing) return;
+      ws.serializeAttachment({ ...meta, typing: false });
+    }
+    this.broadcast({ type: "typing", cid: meta.key, name: meta.user, typing: on }, meta.sid);
+  }
+
+  async avatarUpdated(ws, meta) {
+    const wait = (meta.lastAvatar || 0) + AVATAR_NOTICE_GAP_MS - Date.now();
+    if (wait > 0) {
+      if (this.avatarWaiting.has(meta.sid)) return;
+      this.avatarWaiting.add(meta.sid);
+      try {
+        await new Promise((resolve) => setTimeout(resolve, wait));
+      } finally {
+        this.avatarWaiting.delete(meta.sid);
+      }
+    }
+    try {
+      ws.serializeAttachment({ ...(ws.deserializeAttachment() || meta), lastAvatar: Date.now() });
+    } catch {
+      return;
+    }
+    const version = await this.env.USERS.get(this.env.USERS.idFromName("global")).avatarVersion(meta.key);
+    this.broadcast({ type: "avatar", cid: meta.key, v: version ?? 0 });
+  }
+
+  async postMessage(ws, meta, data) {
+    const text = String(data.text ?? "").trim().slice(0, MAX_TEXT);
+    if (!text) return;
+
+    const now = Date.now();
+    if (meta.last && now - meta.last < MIN_GAP_MS) {
+      ws.send(JSON.stringify({ type: "error", message: "You're sending messages too quickly." }));
+      return;
+    }
+    ws.serializeAttachment({ ...meta, last: now, typing: false });
+
+    const { id } = this.sql
+      .exec("INSERT INTO messages (cid, name, text, ts) VALUES (?, ?, ?, ?) RETURNING id", meta.key, meta.user, text, now)
+      .one();
+    this.sql.exec("DELETE FROM messages WHERE id <= ?", id - KEEP_MESSAGES);
+
+    this.broadcast({ type: "message", message: { id, cid: meta.key, name: meta.user, text, ts: now } });
+
+    try {
+      await this.env.USERS.get(this.env.USERS.idFromName("global")).touchConversation(meta.key, meta.peerKey, meta.key, text, now);
+    } catch {}
+    // If the other person already has this open (and isn't away), their read marker moves right along
+    // with the message instead of waiting for them to do anything about it.
+    const peerWatching = this.liveSockets().some((s) => {
+      const info = s.deserializeAttachment() || {};
+      return info.key === meta.peerKey && !info.away;
+    });
+    if (peerWatching) {
+      try {
+        await this.env.USERS.get(this.env.USERS.idFromName("global")).markRead(meta.key, meta.peerKey, meta.peerKey, now);
+      } catch {}
+    }
+
+    await this.pushToAway(meta, text);
+  }
+
+  async pushSubscribe(ws, meta, input) {
+    if (!pushConfigured(this.env)) return;
+    const now = Date.now();
+    if (meta.lastPushSub && now - meta.lastPushSub < PUSH_SUB_GAP_MS) return;
+    ws.serializeAttachment({ ...meta, lastPushSub: now });
+
+    const sub = await parseSubscription(input);
+    if (!sub) return;
+
+    const known = this.sql.exec("SELECT cid FROM push_subs WHERE endpoint = ?", sub.endpoint).toArray()[0];
+    if (!known) {
+      const mine = this.sql.exec("SELECT COUNT(*) AS n FROM push_subs WHERE cid = ?", meta.key).one().n;
+      if (mine >= MAX_PUSH_PER_USER) {
+        this.sql.exec(
+          "DELETE FROM push_subs WHERE endpoint IN (SELECT endpoint FROM push_subs WHERE cid = ? ORDER BY created LIMIT ?)",
+          meta.key,
+          mine - MAX_PUSH_PER_USER + 1
+        );
+      }
+    }
+    this.sql.exec(
+      `INSERT INTO push_subs (endpoint, cid, p256dh, auth, created) VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(endpoint) DO UPDATE SET cid = excluded.cid, p256dh = excluded.p256dh, auth = excluded.auth, created = excluded.created`,
+      sub.endpoint,
+      meta.key,
+      sub.p256dh,
+      sub.auth,
+      now
+    );
+  }
+
+  async pushToAway(meta, text) {
+    try {
+      if (!pushConfigured(this.env)) return;
+      const subject = this.env.VAPID_SUBJECT || meta.origin;
+      if (!subject) return;
+
+      const subs = this.sql.exec("SELECT endpoint, cid, p256dh, auth FROM push_subs WHERE cid = ?", meta.peerKey).toArray();
+      if (!subs.length) return;
+
+      const watching = this.liveSockets().some((s) => {
+        const info = s.deserializeAttachment() || {};
+        return info.key === meta.peerKey && !info.away;
+      });
+      if (watching) return;
+
+      const chars = Array.from(text);
+      const payload = {
+        title: meta.user,
+        body: chars.length > PUSH_BODY_CHARS ? `${chars.slice(0, PUSH_BODY_CHARS - 1).join("")}…` : text,
+        dm: meta.key,
+        tag: `betachat-dm:${[meta.key, meta.peerKey].sort().join(":")}`,
+      };
+
+      const outcomes = await Promise.allSettled(
+        subs.map(async (sub) => {
+          const result = await sendPush(this.env, sub, payload, { subject, ttl: PUSH_TTL_S });
+          if (result.gone) this.sql.exec("DELETE FROM push_subs WHERE endpoint = ?", sub.endpoint);
+          else if (!result.ok) console.warn("push refused", new URL(sub.endpoint).host, result.status, result.detail);
+          return result;
+        })
+      );
+      const failed = outcomes.filter((o) => o.status === "rejected");
+      for (const o of failed) console.warn("push failed", String(o.reason));
+    } catch (err) {
+      console.warn("push error", String(err));
+    }
+  }
+
+  async webSocketClose(ws) {
+    try {
+      this.typing(ws, ws.deserializeAttachment() || {}, false);
+    } catch {}
+    try {
+      ws.close(1000, "closing");
+    } catch {}
+    this.broadcastPresence();
+  }
+
+  async webSocketError(ws) {
+    try {
+      this.typing(ws, ws.deserializeAttachment() || {}, false);
+    } catch {}
+    this.broadcastPresence();
+  }
+
+  liveSockets() {
+    return this.ctx
+      .getWebSockets()
+      .filter((s) => s.readyState === OPEN && (s.deserializeAttachment() || {}).authed);
+  }
+
+  broadcastPresence() {
+    this.broadcast({ type: "presence", count: this.liveSockets().length });
+  }
+
   broadcast(payload, exceptSid = null) {
     const message = JSON.stringify(payload);
     for (const socket of this.liveSockets()) {
