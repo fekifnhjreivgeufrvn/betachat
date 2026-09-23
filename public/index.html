@@ -60,6 +60,24 @@
     *, *::before, *::after { box-sizing: border-box; }
     [hidden] { display: none !important; }
 
+    /* Screen transitions: a small slide-and-fade as each screen (auth, a tab, or chat) is
+       unhidden. [hidden] toggling already takes them to/from display:none, and an element's CSS
+       animation restarts on its own whenever that happens — so this needs no JS beyond picking a
+       direction. --enter-x flips sign for "back" navigation (see .dir-back below). Skipped
+       entirely for anyone who'd rather not see motion. */
+    @media (prefers-reduced-motion: no-preference) {
+      .join, .tab-screen, .chat {
+        animation: screen-in 0.32s cubic-bezier(0.22, 0.61, 0.36, 1);
+      }
+      .join.dir-back, .tab-screen.dir-back, .chat.dir-back {
+        --enter-x: -14px;
+      }
+    }
+    @keyframes screen-in {
+      from { opacity: 0; transform: translateX(var(--enter-x, 14px)); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+
     /* Lock the page itself so betachat behaves like an app shell: every scrollbar you see
        belongs to a specific pane (messages, a room list, a form), never the document. */
     html, body { height: 100%; margin: 0; overflow: hidden; overscroll-behavior: none; }
@@ -1775,8 +1793,27 @@
       // right tab in the bottom bar (phone) — "New room" still counts as the Rooms tab, and so on.
       const SCREEN_TAB = { rooms: "rooms", newRoom: "rooms", messages: "messages", newMessage: "messages", account: "account" };
 
+      // Left-to-right position of each screen, purely for picking a transition direction: moving
+      // to a higher number slides in from the right (drilling forward, e.g. Rooms -> New room),
+      // moving to a lower one slides in from the left (going back, or to an earlier tab).
+      const SCREEN_ORDER = { rooms: 0, newRoom: 1, messages: 2, newMessage: 3, account: 4, chat: 5 };
+      let currentScreen = null;
+
       function show(name) {
-        for (const [key, el] of Object.entries(views)) el.hidden = key !== name;
+        const prev = currentScreen;
+        const el = views[name];
+        if (el && el.hidden) {
+          // Only set a direction when we actually know both ends of the move and it's a genuine
+          // screen change — re-showing the screen you're already on (e.g. to display an error)
+          // must not replay the animation or flip its direction.
+          if (prev && prev !== name && SCREEN_ORDER[name] !== undefined && SCREEN_ORDER[prev] !== undefined) {
+            el.classList.toggle("dir-back", SCREEN_ORDER[name] < SCREEN_ORDER[prev]);
+          } else {
+            el.classList.remove("dir-back");
+          }
+        }
+        for (const [key, el2] of Object.entries(views)) el2.hidden = key !== name;
+        currentScreen = name;
         rail.hidden = name === "auth"; // (only wide screens ever show it)
         tabbar.hidden = name === "auth" || name === "chat"; // full-screen for signing in and for an open chat
         const tab = SCREEN_TAB[name] || null;
