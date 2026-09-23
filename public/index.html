@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>betachat</title>
-  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="manifest" href="/manifest.json">
   <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
   <meta name="theme-color" content="#e4ebe8" media="(prefers-color-scheme: light)">
@@ -169,8 +169,9 @@
     .room-alert { display: inline-flex; flex: none; opacity: 0.75; }
     .room[aria-current="true"] .room-alert { opacity: 0.9; }
 
-    .my-rooms .room { min-height: 2.75rem; border: 1px solid var(--line); background: var(--surface); }
-    .my-rooms .room[aria-current="true"] { border-color: var(--mine); background: var(--mine); }
+    .my-rooms .room, .my-dms .room { min-height: 2.75rem; border: 1px solid var(--line); background: var(--surface); }
+    .my-rooms .room[aria-current="true"], .my-dms .room[aria-current="true"] { border-color: var(--mine); background: var(--mine); }
+    .my-dms { margin-top: 1.5rem; }
 
     @media (min-width: 800px) {
       .rail {
@@ -184,16 +185,18 @@
         border-left: 1px solid var(--line);
         background: var(--surface);
       }
-      .my-rooms, #switch-room { display: none; }
+      .my-rooms, .my-dms, #switch-room, #switch-dm { display: none; }
     }
     .wordmark { margin: 0; padding: 0.15rem 0.75rem 0; font-size: 1.15rem; font-weight: 700; letter-spacing: -0.02em; }
     .rail-empty { margin: 0; padding: 0 0.75rem; font-size: 0.9rem; color: var(--muted); }
+    .rail-heading { margin: 0.35rem 0.75rem 0; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+    .rail-section { display: flex; flex-direction: column; gap: 0.2rem; min-height: 0; flex: 1 1 0; }
+    .rail-actions { display: flex; flex-direction: column; gap: 0.5rem; margin-top: auto; }
     .rail-new {
       display: flex;
       align-items: center;
       justify-content: center;
       gap: 0.4rem;
-      margin-top: auto;
       padding: 0.6rem 0.9rem;
       border: 1px solid var(--line);
       border-radius: 14px;
@@ -204,6 +207,22 @@
       cursor: pointer;
     }
     .rail-new:hover { background: var(--bg); }
+
+    /* Direct-message rows: an avatar, then a name and a one-line preview stacked, then a time and an
+       unread dot. Built on top of .room, which already gives the button its layout, hover and
+       aria-current styling. */
+    .room.dm { align-items: center; }
+    .dm-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.05rem; }
+    .dm-preview { font-size: 0.78rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .room[aria-current="true"] .dm-preview { color: inherit; opacity: 0.85; }
+    .dm-time { flex: none; font-size: 0.72rem; color: var(--muted); }
+    .room[aria-current="true"] .dm-time { color: inherit; opacity: 0.85; }
+    .dm-unread { flex: none; width: 0.5rem; height: 0.5rem; border-radius: 50%; background: var(--accent); }
+
+    /* Names and avatars in the message list that can be clicked to start a direct message */
+    [data-dm-target] { cursor: pointer; border-radius: 6px; }
+    .who[data-dm-target]:hover, .who[data-dm-target]:focus-visible { text-decoration: underline; }
+    .msg-avatar [data-dm-target]:hover { filter: brightness(1.1); }
 
     /* Chat screen */
     .chat { flex: 1; min-height: 0; display: flex; flex-direction: column; }
@@ -395,14 +414,28 @@
   </style>
 </head>
 <body>
-  <nav class="rail" id="rail" aria-label="Your rooms" hidden>
+  <nav class="rail" id="rail" aria-label="Your rooms and messages" hidden>
     <p class="wordmark">betachat</p>
-    <ul class="room-list" data-room-list></ul>
-    <p class="rail-empty" id="rail-empty" hidden>Rooms you join will show up here.</p>
-    <button class="rail-new" type="button" id="rail-new">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-      Join or create a room
-    </button>
+    <div class="rail-section">
+      <p class="rail-heading">Rooms</p>
+      <ul class="room-list" data-room-list></ul>
+      <p class="rail-empty" id="rail-empty" hidden>Rooms you join will show up here.</p>
+    </div>
+    <div class="rail-section">
+      <p class="rail-heading">Messages</p>
+      <ul class="room-list" data-dm-list></ul>
+      <p class="rail-empty" data-dms-empty hidden>Conversations you start will show up here.</p>
+    </div>
+    <div class="rail-actions">
+      <button class="rail-new" type="button" id="rail-new">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+        Join or create a room
+      </button>
+      <button class="rail-new" type="button" id="rail-new-dm">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+        New message
+      </button>
+    </div>
   </nav>
 
   <main class="app">
@@ -435,6 +468,11 @@
           <ul class="room-list" data-room-list></ul>
         </section>
 
+        <section class="my-rooms my-dms" id="my-dms" aria-labelledby="my-dms-title" hidden>
+          <h2 id="my-dms-title">Direct messages</h2>
+          <ul class="room-list" data-dm-list></ul>
+        </section>
+
         <form id="join-form" novalidate>
           <h2>Join or create a room</h2>
           <p class="lede">Enter a room name. If it doesn't exist yet, it's created. Add a password to make a new room private.</p>
@@ -448,6 +486,17 @@
 
           <p class="form-error" id="join-error" role="alert"></p>
           <button class="btn" type="submit" id="join-btn">Join room</button>
+        </form>
+
+        <form id="dm-form" novalidate>
+          <h2>Message someone</h2>
+          <p class="lede">Enter their username to start a private, one-to-one conversation. They need a betachat account already.</p>
+
+          <label for="dm-user">Username</label>
+          <input id="dm-user" maxlength="20" autocomplete="off" autocapitalize="none" spellcheck="false">
+
+          <p class="form-error" id="dm-error" role="alert"></p>
+          <button class="btn" type="submit" id="dm-btn">Message</button>
         </form>
       </div>
     </section>
@@ -473,6 +522,7 @@
           <button class="link profile-open" type="button">Profile</button>
           <button class="link" type="button" id="copy">Copy invite link</button>
           <button class="link" type="button" id="alerts-btn" aria-pressed="false">Alerts here: off</button>
+          <button class="link" type="button" id="switch-dm">Messages</button>
           <button class="link" type="button" id="switch-room">Rooms</button>
         </div>
       </header>
@@ -595,15 +645,27 @@
       // ---- State ---------------------------------------------------------
       let me = "";    // username as registered
       let myKey = ""; // lowercase; the server puts this in `cid` on my messages
-      // The address wins; otherwise the room you were last in (so the Home Screen icon reopens it)
+
+      // A "conversation" is either a room ("room", identified by `room`) or a direct message
+      // ("dm", identified by `peerKey`). Only one is ever open at a time, and most of the code below
+      // that used to say "room" now branches on `convoType` instead. The address wins over anything
+      // remembered locally; failing that, a DM link isn't guessed at, so it falls back to the last room.
+      const cleanUsername = (value) => (value || "").trim().toLowerCase().slice(0, 20);
+      const initialParams = new URLSearchParams(location.search);
+      const initialDM = cleanUsername(initialParams.get("dm"));
       let lastRoom = null;
       try { lastRoom = localStorage.getItem("betachat:room"); } catch {}
-      let room = cleanRoom(new URLSearchParams(location.search).get("room") || lastRoom);
+      let convoType = initialDM ? "dm" : "room";
+      let room = cleanRoom(initialParams.get("room") || (initialDM ? "" : lastRoom));
+      let peerKey = initialDM;
+      let peerName = initialDM; // a placeholder until the server sends back the real-cased name
       let password = session.get(`chat:pw:${room}`) || "";
       let isPrivate = false;
       let isOwner = false;
       let pendingPassword = ""; // a new room password waiting for the server to confirm it
       let myAvatar = null; // when my picture was last set (its version), or null if I have none
+      let dmList = []; // conversations from the server: [{ peerKey, peer, avatar, lastText, lastTs, lastMine, unread }]
+      let renderedDMs = null;
 
       // ---- Elements ------------------------------------------------------
       const views = { auth: $("#auth"), join: $("#join"), chat: $("#chat") };
@@ -625,14 +687,30 @@
       const alertsBtn = $("#alerts-btn");
       const rail = $("#rail"), railEmpty = $("#rail-empty"), myRoomsBox = $("#my-rooms");
       const emptyNote = $("#empty-note"), emptyRoom = $("#empty-room");
+      const myDMsBox = $("#my-dms"), dmForm = $("#dm-form"), dmUserInput = $("#dm-user");
+      const dmError = $("#dm-error"), dmBtn = $("#dm-btn");
+
+      // What to call the current conversation in headings, alerts and notifications.
+      function convoLabel() {
+        return convoType === "dm" ? `your messages with ${peerName || peerKey}` : `#${room}`;
+      }
 
       function applyRoom() {
         updateTitle();
-        roomTitle.textContent = `#${room}`;
-        badgeEl.hidden = !isPrivate;
-        settingsBtn.hidden = !isOwner;
+        if (convoType === "dm") {
+          roomTitle.textContent = peerName || peerKey;
+          badgeEl.hidden = true;
+          settingsBtn.hidden = true;
+          copyBtn.hidden = true;
+        } else {
+          roomTitle.textContent = `#${room}`;
+          badgeEl.hidden = !isPrivate;
+          settingsBtn.hidden = !isOwner;
+          copyBtn.hidden = false;
+        }
         updateAlertsTitle();
         renderRooms();
+        renderDMs();
       }
 
       // ---- Your rooms --------------------------------------------------------
@@ -700,7 +778,9 @@
       // there, even before it has been kept.
       function visibleRooms() {
         const list = roomList.map((r) => ({ name: r.name, private: r.private }));
-        if (joined && !list.some((r) => r.name === room)) list.push({ name: room, private: isPrivate });
+        if (convoType === "room" && joined && !list.some((r) => r.name === room)) {
+          list.push({ name: room, private: isPrivate });
+        }
         return list.sort((a, b) => a.name.localeCompare(b.name));
       }
 
@@ -740,7 +820,7 @@
 
         lists.forEach((ul) =>
           ul.querySelectorAll(".room").forEach((button) => {
-            const isCurrent = (joined || awaitingJoin) && button.dataset.room === room;
+            const isCurrent = convoType === "room" && (joined || awaitingJoin) && button.dataset.room === room;
             if (isCurrent) button.setAttribute("aria-current", "true");
             else button.removeAttribute("aria-current");
             // Alerts follow whichever room this is, so the bell only ever sits on the current row.
@@ -751,6 +831,103 @@
         );
         railEmpty.hidden = list.length > 0;
         myRoomsBox.hidden = list.length === 0;
+      }
+
+      // ---- Direct messages ------------------------------------------------
+      // Unlike rooms, conversations aren't remembered locally - the server already knows about every
+      // one you've sent or received a message in (see UserDirectory.listConversations), so the list is
+      // just fetched fresh whenever it might be stale, most recently active first.
+      const fmtRelative = (ts) => {
+        const mins = Math.round((Date.now() - ts) / 60000);
+        if (mins < 1) return "now";
+        if (mins < 60) return `${mins}m`;
+        const hours = Math.round(mins / 60);
+        if (hours < 24) return `${hours}h`;
+        const days = Math.round(hours / 24);
+        if (days < 7) return `${days}d`;
+        return new Date(ts).toLocaleDateString([], { month: "short", day: "numeric" });
+      };
+
+      async function loadDMs() {
+        try {
+          const { ok, data } = await api("/api/dm/list");
+          if (!ok || !Array.isArray(data.conversations)) return;
+          dmList = data.conversations;
+          renderDMs();
+        } catch {}
+      }
+
+      // A conversation you just opened is shown right away, even before it has a message in it (and so
+      // isn't in dmList yet) or before the list has been re-fetched since your last message in it.
+      function visibleDMs() {
+        const list = dmList.map((c) => ({ ...c }));
+        if (convoType === "dm" && (joined || awaitingJoin) && !list.some((c) => c.peerKey === peerKey)) {
+          list.unshift({ peerKey, peer: peerName || peerKey, lastText: "", lastTs: 0, lastMine: false, unread: false });
+        }
+        return list;
+      }
+
+      function makeDMRow(c) {
+        const li = document.createElement("li");
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "room dm";
+        button.dataset.dm = c.peerKey;
+        button.dataset.dmName = c.peer;
+        button.append(makeAvatar(c.peerKey, c.peer));
+        const info = document.createElement("span");
+        info.className = "dm-info";
+        const name = document.createElement("span");
+        name.className = "room-name";
+        name.textContent = c.peer; // textContent, like everything else that comes from a name
+        info.append(name);
+        if (c.lastText) {
+          const preview = document.createElement("span");
+          preview.className = "dm-preview";
+          preview.textContent = c.lastMine ? `You: ${c.lastText}` : c.lastText;
+          info.append(preview);
+        }
+        button.append(info);
+        if (c.lastTs) {
+          const time = document.createElement("span");
+          time.className = "dm-time";
+          time.textContent = fmtRelative(c.lastTs);
+          button.append(time);
+        }
+        if (c.unread) {
+          button.insertAdjacentHTML("beforeend", '<span class="dm-unread" aria-hidden="true"></span><span class="sr">Unread</span>');
+        }
+        li.append(button);
+        return li;
+      }
+
+      // Draws the list in both places (sidebar, and above the join form on a phone), same as renderRooms.
+      function renderDMs() {
+        const list = visibleDMs();
+        const signature = list.map((c) => `${c.peerKey}:${c.lastTs}:${c.unread ? 1 : 0}`).join(",");
+        const lists = [...document.querySelectorAll("[data-dm-list]")];
+
+        if (signature !== renderedDMs) {
+          renderedDMs = signature;
+          const active = document.activeElement;
+          const focusKey = active && active.classList.contains("dm") ? active.dataset.dm : "";
+          const focusIn = focusKey ? lists.indexOf(active.closest("[data-dm-list]")) : -1;
+          lists.forEach((ul) => ul.replaceChildren(...list.map(makeDMRow)));
+          if (focusIn >= 0) {
+            const again = lists[focusIn].querySelector(`.dm[data-dm="${focusKey}"]`);
+            if (again) again.focus();
+          }
+        }
+
+        lists.forEach((ul) =>
+          ul.querySelectorAll(".dm").forEach((button) => {
+            const isCurrent = convoType === "dm" && (joined || awaitingJoin) && button.dataset.dm === peerKey;
+            if (isCurrent) button.setAttribute("aria-current", "true");
+            else button.removeAttribute("aria-current");
+          })
+        );
+        document.querySelectorAll("[data-dms-empty]").forEach((el) => (el.hidden = list.length > 0));
+        myDMsBox.hidden = list.length === 0;
       }
 
       // ---- Alerts for messages that arrive while you're looking elsewhere --
@@ -769,7 +946,7 @@
 
       const isAway = () => document.hidden || !document.hasFocus();
       const canNotify = () => "Notification" in window;
-      const notificationTag = () => `betachat:${room}`;
+      const notificationTag = () => convoType === "dm" ? `betachat-dm:${[myKey, peerKey].sort().join(":")}` : `betachat:${room}`;
 
       // What kind of device this is decides what can work
       const IS_IOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
@@ -782,7 +959,8 @@
       let pushRegistered = false; // ...and the room I'm in has it, so it will push to me when I'm away
 
       function updateTitle() {
-        document.title = `${unread ? `(${unread > 99 ? "99+" : unread}) ` : ""}#${room} – betachat`;
+        const label = convoType === "dm" ? (peerName || peerKey) : `#${room}`;
+        document.title = `${unread ? `(${unread > 99 ? "99+" : unread}) ` : ""}${label} – betachat`;
       }
 
       function clearUnread() {
@@ -841,14 +1019,14 @@
         if (!canNotify() || Notification.permission !== "granted") return;
         if (pushRegistered && document.hidden) return; // the server is sending this one as a push
         const chars = Array.from(m.text);
-        const title = `${m.name} in #${room}`;
+        const title = convoType === "dm" ? m.name : `${m.name} in #${room}`;
         const options = {
           body: chars.length > 140 ? `${chars.slice(0, 139).join("")}…` : m.text,
           tag: notificationTag(), // a new message replaces the previous notification for this room
           renotify: true,
           silent: true, // our own sound plays, so the system shouldn't add a second one
           icon: "/icons/icon-192.png",
-          data: { room },
+          data: convoType === "dm" ? { dm: peerKey } : { room },
         };
         try {
           if (swReg) {
@@ -987,23 +1165,23 @@
       // #general does not cover #design-team too, and switching rooms moves it rather than doubling it
       // up. Every string here says so, since a plain "Alerts: on" reads as covering everything.
       const alertsSummary = (outcome) => {
-        const here = `for #${room}`;
+        const here = `for ${convoLabel()}`;
         switch (outcome) {
-          case "push": return `Alerts are on ${here}. You'll be notified of new messages here even when betachat is closed. Switching rooms moves this to the new one.`;
+          case "push": return `Alerts are on ${here}. You'll be notified of new messages here even when betachat is closed. Switching conversations moves this to the new one.`;
           case "denied": return `Alerts are on ${here} with sound and an unread count. Notifications are blocked for this site in your browser settings.`;
           case "needs-install": return `Alerts are on ${here} with sound and an unread count. To be notified when the app is closed, add betachat to your Home Screen first.`;
           case "unsupported": return `Alerts are on ${here} with sound and an unread count. This browser can't show notifications.`;
           default:
             return canNotify() && Notification.permission === "granted"
-              ? `Alerts are on ${here}: sound, an unread count and notifications while betachat is open. Switching rooms moves this to the new one.`
+              ? `Alerts are on ${here}: sound, an unread count and notifications while betachat is open. Switching conversations moves this to the new one.`
               : `Alerts are on ${here} with sound and an unread count.`;
         }
       };
 
       function updateAlertsTitle() {
         alertsBtn.title = alertsOn
-          ? `On for #${room} only: sound and a notification for new messages here while this tab is open. Leaving this room turns it off here and on wherever you go next. The unread count in the tab title covers every room and is always on.`
-          : "Sound and a notification for new messages in whichever room this tab is connected to, while it's open. Only ever covers one room at a time. The unread count in the tab title covers every room and is always on.";
+          ? `On for ${convoLabel()} only: sound and a notification for new messages here while this tab is open. Leaving this conversation turns it off here and on wherever you go next. The unread count in the tab title covers everything and is always on.`
+          : "Sound and a notification for new messages in whichever room or conversation this tab is connected to, while it's open. Only ever covers one at a time. The unread count in the tab title covers everything and is always on.";
       }
 
       function renderAlertsButton() {
@@ -1019,7 +1197,7 @@
         renderRooms(); // the bell on the room list follows the same state (joined is defined by now)
         if (!alertsOn) {
           await dropPush();
-          notify(`Alerts are off for #${room}. The unread count in the tab title stays on for every room.`, "info");
+          notify(`Alerts are off for ${convoLabel()}. The unread count in the tab title stays on for everything.`, "info");
           return;
         }
         await unlockAudio();
@@ -1114,10 +1292,24 @@
         const el = document.createElement("article");
         el.className = "msg" + (mine ? " mine" : "") + (grouped ? " grouped" : "");
 
+        // Someone else's name or picture doubles as a shortcut to message them directly, as long as
+        // they're a real account (older rows from before accounts used a different kind of id).
+        const canDM = !mine && looksLikeUsername(m.cid);
+
         // The picture sits beside the first message of a run; later ones keep an empty slot so they line up
         const slot = document.createElement("div");
         slot.className = "msg-avatar";
-        if (!grouped) slot.append(makeAvatar(m.cid, m.name));
+        if (!grouped) {
+          const avatarEl = makeAvatar(m.cid, m.name);
+          if (canDM) {
+            avatarEl.dataset.dmTarget = m.cid;
+            avatarEl.dataset.dmName = m.name;
+            avatarEl.setAttribute("role", "button");
+            avatarEl.setAttribute("tabindex", "0");
+            avatarEl.title = `Message ${m.name}`;
+          }
+          slot.append(avatarEl);
+        }
         const body = document.createElement("div");
         body.className = "msg-body";
 
@@ -1128,6 +1320,13 @@
             const who = document.createElement("span");
             who.className = "who";
             who.textContent = m.name;
+            if (canDM) {
+              who.dataset.dmTarget = m.cid;
+              who.dataset.dmName = m.name;
+              who.setAttribute("role", "button");
+              who.setAttribute("tabindex", "0");
+              who.title = `Message ${m.name}`;
+            }
             head.append(who);
           }
           const time = document.createElement("time");
@@ -1202,8 +1401,8 @@
         clearMessages();
         emptyEl.hidden = messages.length > 0;
         // A new, empty room that the person asked for by name. Easy to miss a typo otherwise: it looks
-        // exactly like a room whose messages have vanished.
-        emptyRoom.textContent = `#${room}`;
+        // exactly like a room whose messages have vanished. (Never applies to a DM: those never "create".)
+        if (convoType === "room") emptyRoom.textContent = `#${room}`;
         emptyNote.hidden = !justCreated;
         justCreated = false;
         messages.forEach((m) => renderMessage(m, true));
@@ -1229,6 +1428,8 @@
         for (const [key, el] of Object.entries(views)) el.hidden = key !== name;
         rail.hidden = name === "auth"; // (only wide screens ever show it)
         renderRooms();
+        renderDMs();
+        if (name === "join" && myKey) loadDMs(); // the picker is exactly when a stale preview would show
       }
 
       let registering = false;
@@ -1261,6 +1462,7 @@
         roomInput.value = room;
         pwInput.value = password;
         joinError.textContent = message;
+        dmError.textContent = "";
         joinBtn.disabled = false;
         joinBtn.textContent = "Join room";
         if (!focusEl) {
@@ -1302,21 +1504,33 @@
         joined = true;
         blocked = false;
         retry = 0;
-        try { localStorage.setItem("betachat:room", room); } catch {}
         if (document.hidden) sendAway();
         syncPush();
         maybeShowInstallTip();
-        isPrivate = !!data.private;
-        isOwner = !!data.owner;
-        if (isPrivate && password) session.set(`chat:pw:${room}`, password);
-        // A room made by this very join is new and empty. It goes on the list once someone posts in it, and
-        // one that was on the list but no longer existed (it was deleted) comes off.
-        justCreated = !!data.created && awaitingJoin;
-        if (data.created) forgetRoom(room);
-        else rememberRoom();
+
+        if (convoType === "dm") {
+          peerKey = data.peerKey || peerKey;
+          peerName = data.peer || peerName;
+          if (typeof data.peerAvatar !== "undefined") setAvatarVersion(peerKey, data.peerAvatar || 0);
+          justCreated = false;
+          loadDMs(); // this conversation may be new, or just got marked read
+        } else {
+          try { localStorage.setItem("betachat:room", room); } catch {}
+          isPrivate = !!data.private;
+          isOwner = !!data.owner;
+          if (isPrivate && password) session.set(`chat:pw:${room}`, password);
+          // A room made by this very join is new and empty. It goes on the list once someone posts in it,
+          // and one that was on the list but no longer existed (it was deleted) comes off.
+          justCreated = !!data.created && awaitingJoin;
+          if (data.created) forgetRoom(room);
+          else rememberRoom();
+        }
+
         applyRoom();
         setStatus("open");
         joinError.textContent = "";
+        dmError.textContent = "";
+        if (dmBtn) { dmBtn.disabled = false; dmBtn.textContent = "Message"; }
         // Only leave the form if the person just submitted it, not on a silent reconnect
         if (awaitingJoin) {
           awaitingJoin = false;
@@ -1326,6 +1540,17 @@
       }
 
       function onJoinError(data) {
+        if (convoType === "dm") {
+          blocked = true;
+          awaitingJoin = false;
+          disconnect();
+          setStatus("closed");
+          if (dmBtn) { dmBtn.disabled = false; dmBtn.textContent = "Message"; }
+          showJoin();
+          dmError.textContent = data.message;
+          dmUserInput.focus();
+          return;
+        }
         // A saved password for a room that has since become public: just join it without one
         if (data.code === "room_public" && !awaitingJoin && password) {
           password = "";
@@ -1401,7 +1626,11 @@
         avatarVersions.clear();
         myAvatar = null;
         roomList = [];
+        dmList = [];
+        renderedDMs = null;
         me = myKey = password = pendingPassword = "";
+        peerKey = peerName = "";
+        convoType = "room";
         isPrivate = isOwner = blocked = awaitingJoin = false;
         unread = 0;
         applyRoom();
@@ -1413,12 +1642,15 @@
         setStatus("connecting");
 
         const proto = location.protocol === "https:" ? "wss" : "ws";
-        const socket = new WebSocket(`${proto}://${location.host}/ws?room=${encodeURIComponent(room)}`);
+        const wsUrl = convoType === "dm"
+          ? `${proto}://${location.host}/ws-dm?with=${encodeURIComponent(peerKey)}`
+          : `${proto}://${location.host}/ws?room=${encodeURIComponent(room)}`;
+        const socket = new WebSocket(wsUrl);
         ws = socket;
 
-        // The login cookie rides along on the handshake; the room password travels inside the socket
+        // The login cookie rides along on the handshake; a room's password travels inside the socket
         // (over TLS), never in the URL. Who you are is decided by the server from the cookie.
-        socket.onopen = () => socket.send(JSON.stringify({ type: "join", password }));
+        socket.onopen = () => socket.send(JSON.stringify(convoType === "dm" ? { type: "join" } : { type: "join", password }));
         socket.onmessage = (event) => {
           if (socket !== ws) return;
           let data;
@@ -1431,7 +1663,8 @@
               renderMessage(data.message, data.message.cid === myKey);
               setTyping(data.message.cid, "", false); // they sent it, so they're done typing
               if (data.message.cid !== myKey) onIncoming(data.message);
-              if (!roomList.some((r) => r.name === room)) rememberRoom(); // the room now has something in it
+              if (convoType === "dm") loadDMs(); // refresh the preview, order and unread state
+              else if (!roomList.some((r) => r.name === room)) rememberRoom(); // the room now has something in it
               break;
             case "typing":
               if (typeof data.cid === "string" && typeof data.name === "string" && data.cid !== myKey) {
@@ -1487,11 +1720,14 @@
         meName.textContent = username;
         myAvatar = avatar || null;
         loadRooms();
+        loadDMs();
         avatarVersions.clear();
         if (myAvatar) avatarVersions.set(myKey, myAvatar);
         fillAvatar(meAvatar, myKey, me);
         blocked = false;
         retry = 0;
+        // A DM link to yourself can't work; fall back to whatever room you'd otherwise land on.
+        if (convoType === "dm" && peerKey === myKey) { convoType = "room"; peerKey = peerName = ""; }
         showChat();
         connect();
       }
@@ -1537,15 +1773,17 @@
         joinError.textContent = "";
 
         // Same room, same password, still connected: nothing to redo
-        if (newRoom === room && newPassword === password && joined && ws && ws.readyState === WebSocket.OPEN) {
+        if (convoType === "room" && newRoom === room && newPassword === password && joined && ws && ws.readyState === WebSocket.OPEN) {
           showChat();
           return;
         }
 
-        if (newRoom !== room) unregisterPush(); // notifications follow the room you're in
+        if (convoType !== "room" || newRoom !== room) unregisterPush(); // notifications follow the conversation you're in
         disconnect();
-        clearMessages(); // never show one room's messages under another room's name
+        clearMessages(); // never show one conversation's messages under another one's name
         emptyEl.hidden = true; // ...and don't call it empty while its history is still on the way
+        convoType = "room";
+        peerKey = peerName = "";
         room = newRoom;
         password = newPassword;
         isPrivate = isOwner = false;
@@ -1561,6 +1799,43 @@
         connect();
       }
 
+      // Go to a direct message: from the "Message someone" form, a row in the list of conversations, or
+      // clicking someone's name or picture on one of their messages in a room. `knownName` is a
+      // display-cased name we already have (from a conversation row or a message); the server's own
+      // answer overwrites it as soon as the socket joins, so a wrong guess here never sticks around.
+      function enterDM(targetRaw, knownName) {
+        const targetKey = cleanUsername(targetRaw);
+        dmError.textContent = "";
+        if (!targetKey) return;
+        if (targetKey === myKey) {
+          dmError.textContent = "You can't message yourself.";
+          return;
+        }
+        // Already open, still connected: nothing to redo
+        if (convoType === "dm" && targetKey === peerKey && joined && ws && ws.readyState === WebSocket.OPEN) {
+          showChat();
+          return;
+        }
+
+        if (convoType !== "dm" || targetKey !== peerKey) unregisterPush();
+        disconnect();
+        clearMessages();
+        emptyEl.hidden = true;
+        convoType = "dm";
+        peerKey = targetKey;
+        peerName = knownName || targetKey;
+        isPrivate = isOwner = false;
+        unread = 0;
+        blocked = false;
+        retry = 0;
+        awaitingJoin = true;
+        history.replaceState(null, "", `?dm=${encodeURIComponent(peerKey)}`);
+        applyRoom();
+
+        if (dmBtn) { dmBtn.disabled = true; dmBtn.textContent = "Connecting…"; }
+        connect();
+      }
+
       joinForm.addEventListener("submit", (event) => {
         event.preventDefault();
         if (!roomInput.value.trim()) {
@@ -1571,16 +1846,49 @@
         enterRoom(cleanRoom(roomInput.value), pwInput.value);
       });
 
-      // A row in either list of rooms. A private room uses the password this tab already has; if there
-      // isn't one, the server says so and the form asks for it.
+      dmForm.addEventListener("submit", (event) => {
+        event.preventDefault();
+        const name = dmUserInput.value.trim();
+        if (!name) {
+          dmError.textContent = "Enter a username.";
+          dmUserInput.focus();
+          return;
+        }
+        enterDM(name, name);
+      });
+
+      // A row in either list of rooms, a row in either list of conversations, or a clickable name or
+      // picture on someone else's message. A private room uses the password this tab already has; if
+      // there isn't one, the server says so and the form asks for it.
       document.addEventListener("click", (event) => {
-        const row = event.target.closest && event.target.closest(".room");
+        const target = event.target.closest && event.target.closest("[data-dm-target]");
+        if (target) { enterDM(target.dataset.dmTarget, target.dataset.dmName || ""); return; }
+        const dmRow = event.target.closest && event.target.closest("[data-dm]");
+        if (dmRow) { enterDM(dmRow.dataset.dm, dmRow.dataset.dmName || ""); return; }
+        const row = event.target.closest && event.target.closest(".room[data-room]");
         if (row) enterRoom(row.dataset.room, session.get(`chat:pw:${row.dataset.room}`) || "");
+      });
+
+      // The clickable name/picture shortcuts above are spans, not buttons, so Enter and Space (which a
+      // real button gets for free) need wiring up by hand.
+      document.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        const target = event.target.closest && event.target.closest("[data-dm-target]");
+        if (!target) return;
+        event.preventDefault();
+        enterDM(target.dataset.dmTarget, target.dataset.dmName || "");
       });
 
       $("#switch-room").addEventListener("click", openRoomPicker);
       $("#rail-new").addEventListener("click", openRoomPicker);
       $("#empty-pick").addEventListener("click", openRoomPicker);
+
+      function openDMPicker() {
+        dmUserInput.value = "";
+        showJoin("", dmUserInput);
+      }
+      $("#switch-dm").addEventListener("click", openDMPicker);
+      $("#rail-new-dm").addEventListener("click", openDMPicker);
 
       const copyBtn = $("#copy");
       copyBtn.addEventListener("click", async () => {
