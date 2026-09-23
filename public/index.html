@@ -1012,6 +1012,14 @@
       let myAvatar = null; // when my picture was last set (its version), or null if I have none
       let dmList = []; // conversations from the server: [{ peerKey, peer, avatar, lastText, lastTs, lastMine, unread }]
       let renderedDMs = null;
+      // The DM the Messages tab should reopen if you switch to it from somewhere else. `room` and
+      // `password` already survive a trip through a DM (enterDM never touches them), so no room
+      // equivalent of this is needed - but enterRoom does clear peerKey/peerName, so a DM needs its
+      // own memory.
+      let lastDM = null; // { peerKey, peerName } | null
+      function rememberDM() {
+        if (peerKey) lastDM = { peerKey, peerName };
+      }
 
       // ---- Elements ------------------------------------------------------
       const views = {
@@ -1823,16 +1831,31 @@
         if (tab && myKey) loadDMs(); // any of these screens is exactly when a stale preview would show
       }
 
-      // The sidebar's own Rooms / Messages / Account tabs: pick which section of the rail is
-      // showing. Independent of show() above — switching rail tabs never disturbs an open chat.
+      // The sidebar's own Rooms / Messages / Account tabs. On a wide screen the main pane sits right
+      // next to this, so switching tabs should change what it shows too - otherwise it looks stuck
+      // (e.g. still showing Account after you click Rooms). Rooms and Messages each try to bring
+      // back whichever conversation of that kind is open or was last open; Account is always just
+      // itself. Never disturbs an *already open* conversation of the tab you're leaving - it's still
+      // there, just behind the rail's other panel, exactly as before.
       function setRailTab(tab) {
         railTabs.forEach((btn) => btn.setAttribute("aria-current", String(btn.dataset.tab === tab)));
         for (const [key, panel] of Object.entries(railPanels)) panel.hidden = key !== tab;
       }
       railTabs.forEach((btn) =>
         btn.addEventListener("click", () => {
-          setRailTab(btn.dataset.tab);
-          if (btn.dataset.tab === "account") show("account"); // Account is a destination, not just a list to browse
+          const tab = btn.dataset.tab;
+          setRailTab(tab);
+          if (tab === "rooms") {
+            if (convoType === "room") show("chat"); // already open - just reveal it
+            else enterRoom(room, password); // reopen the last one (room always has a value; "general" by default)
+          } else if (tab === "messages") {
+            if (convoType === "dm") show("chat");
+            else if (lastDM) enterDM(lastDM.peerKey, lastDM.peerName);
+            else if (dmList[0]) enterDM(dmList[0].peerKey, dmList[0].peer); // nothing opened yet this session - try history
+            else show("messages"); // genuinely nothing to reopen: the picker screen doubles as the empty state
+          } else {
+            show("account"); // Account is a destination, not just a list to browse
+          }
         })
       );
       tabButtons.forEach((btn) =>
@@ -2152,6 +2175,7 @@
         retry = 0;
         // A DM link to yourself can't work; fall back to whatever room you'd otherwise land on.
         if (convoType === "dm" && peerKey === myKey) { convoType = "room"; peerKey = peerName = ""; }
+        rememberDM();
         showChat();
         connect();
       }
@@ -2248,6 +2272,7 @@
         convoType = "dm";
         peerKey = targetKey;
         peerName = knownName || targetKey;
+        rememberDM();
         isPrivate = isOwner = false;
         unread = 0;
         blocked = false;
