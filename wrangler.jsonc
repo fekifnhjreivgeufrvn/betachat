@@ -8,10 +8,12 @@
     "directory": "./public"
   },
 
-  // One ChatRoom object per room name, plus one UserDirectory that holds every account
+  // One ChatRoom object per room name, one DMRoom object per pair of people
+  // direct-messaging each other, plus one UserDirectory that holds every account
   "durable_objects": {
     "bindings": [
       { "name": "CHAT_ROOM", "class_name": "ChatRoom" },
+      { "name": "DM_ROOM", "class_name": "DMRoom" },
       { "name": "USERS", "class_name": "UserDirectory" }
     ]
   },
@@ -19,7 +21,8 @@
   // SQLite-backed Durable Objects (available on the free plan)
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["ChatRoom"] },
-    { "tag": "v2", "new_sqlite_classes": ["UserDirectory"] }
+    { "tag": "v2", "new_sqlite_classes": ["UserDirectory"] },
+    { "tag": "v3", "new_sqlite_classes": ["DMRoom"] }
   ],
 
   // Makes `npx wrangler tail` and dashboard logs useful
