@@ -18,11 +18,12 @@
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..700&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg: #e4ebe8;
+      --bg: #e9f0ec;
       --surface: #ffffff;
-      --ink: #18231f;
-      --muted: #5a6a65;
-      --line: #cbd7d2;
+      --surface-2: #f4f8f6;
+      --ink: #16221d;
+      --muted: #5c6d67;
+      --line: #d7e2dc;
       --mine: #14504a;
       --mine-ink: #f4fbf9;
       --accent: #f0b429;
@@ -30,46 +31,61 @@
       --danger: #b3261e;
       --danger-ink: #ffffff;
       --online: #2fb574;
+      --shadow-sm: 0 1px 2px rgb(15 30 24 / 0.05);
+      --shadow-md: 0 10px 30px -12px rgb(15 30 24 / 0.22);
+      --shadow-lg: 0 20px 50px -18px rgb(15 30 24 / 0.28);
+      --r-sm: 10px;
+      --r-md: 14px;
+      --r-lg: 20px;
+      --r-xl: 26px;
       color-scheme: light dark;
     }
     @media (prefers-color-scheme: dark) {
       :root {
-        --bg: #0f1715;
-        --surface: #182420;
+        --bg: #0d1512;
+        --surface: #16211d;
+        --surface-2: #121b18;
         --ink: #e7f0ed;
         --muted: #93a6a0;
-        --line: #263631;
+        --line: #24332d;
         --mine: #1f6b62;
         --danger: #ff8a80;
-      --danger-ink: #2b0603;
+        --danger-ink: #2b0603;
+        --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.35);
+        --shadow-md: 0 10px 30px -12px rgb(0 0 0 / 0.55);
+        --shadow-lg: 0 20px 50px -18px rgb(0 0 0 / 0.6);
       }
     }
 
     *, *::before, *::after { box-sizing: border-box; }
     [hidden] { display: none !important; }
 
-    html, body { height: 100%; margin: 0; }
+    /* Lock the page itself so betachat behaves like an app shell: every scrollbar you see
+       belongs to a specific pane (messages, a room list, a form), never the document. */
+    html, body { height: 100%; margin: 0; overflow: hidden; overscroll-behavior: none; }
     body {
       display: flex;
-      justify-content: center;
       background: var(--bg);
       color: var(--ink);
       font-family: "Bricolage Grotesque", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
       font-optical-sizing: auto;
       font-size: 1rem;
       line-height: 1.45;
+      -webkit-tap-highlight-color: transparent;
     }
 
-    :focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+    :focus-visible { outline: 2px solid var(--mine); outline-offset: 2px; border-radius: 4px; }
 
+    /* The whole app fills the viewport edge-to-edge, sidebar plus content — no boxed,
+       letterboxed "webpage" column floating in the middle of the screen. */
     .app {
       display: flex;
       flex-direction: column;
-      width: min(100%, 760px);
+      flex: 1 1 auto;
+      min-width: 0;
+      width: 100%;
+      height: 100vh;
       height: 100dvh;
-    }
-    @media (min-width: 800px) {
-      .app { border-inline: 1px solid var(--line); flex: 0 1 760px; min-width: 0; }
     }
 
     .sr {
@@ -82,85 +98,106 @@
       background: var(--accent);
       color: var(--accent-ink);
       border: 0;
-      border-radius: 14px;
-      padding: 0.6rem 1.1rem;
+      border-radius: var(--r-md);
+      padding: 0.65rem 1.15rem;
       font: inherit;
       font-weight: 600;
       cursor: pointer;
+      transition: filter 0.12s ease, transform 0.12s ease;
     }
     .btn:hover { filter: brightness(1.06); }
-    .btn:disabled { opacity: 0.6; cursor: default; filter: none; }
+    .btn:active { transform: translateY(1px); }
+    .btn:disabled { opacity: 0.55; cursor: default; filter: none; transform: none; }
     .btn.danger { background: var(--danger); color: var(--danger-ink); }
     .link {
       background: none;
       border: 0;
-      padding: 0.25rem 0.1rem;
+      padding: 0.3rem 0.15rem;
       font: inherit;
       font-size: 0.9rem;
+      font-weight: 600;
       color: var(--muted);
-      text-decoration: underline;
-      text-underline-offset: 3px;
+      text-decoration: none;
+      border-radius: 6px;
       cursor: pointer;
     }
-    .link:hover { color: var(--ink); }
+    .link:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
 
     input, textarea {
       border: 1px solid var(--line);
       background: var(--surface);
       color: inherit;
-      border-radius: 14px;
-      padding: 0.6rem 0.8rem;
+      border-radius: var(--r-md);
+      padding: 0.65rem 0.85rem;
       font: inherit;
+      transition: border-color 0.12s ease, box-shadow 0.12s ease;
+    }
+    input:focus-visible, textarea:focus-visible {
+      border-color: var(--mine);
     }
 
-    /* Join screen */
+    /* Join / auth screens: a calm, centred card rather than a bare page of stacked forms */
     .join {
       flex: 1;
+      min-height: 0;
       display: flex;
       align-items: center;
-      padding: 1.5rem;
+      justify-content: center;
+      padding: min(6vh, 2.5rem) 1.25rem;
       overflow-y: auto;
     }
-    .join form { width: 100%; max-width: 30rem; margin: auto 0; }
-    .join-panel { width: 100%; max-width: 30rem; margin: auto 0; }
+    .join form { width: 100%; max-width: 27rem; margin: auto 0; }
+    .join-panel { width: 100%; max-width: 27rem; margin: auto 0; }
     .join-panel form { margin: 0; }
-    .join h2 { margin: 1.5rem 0 0.4rem; font-size: 1.05rem; letter-spacing: -0.01em; }
+    .join h2 { margin: 0 0 0.25rem; font-size: 1.05rem; letter-spacing: -0.01em; }
     .join h1 {
-      margin: 0 0 1rem;
-      font-size: clamp(2.6rem, 11vw, 4.2rem);
+      margin: 0 0 0.5rem;
+      font-size: clamp(2.2rem, 7vw, 3rem);
       font-weight: 700;
       line-height: 1;
       letter-spacing: -0.04em;
     }
-    .join .lede { margin: 0 0 0.75rem; color: var(--muted); max-width: 34ch; }
-    .join label, .dlg label { display: block; margin: 1rem 0 0.35rem; font-weight: 600; }
+    .join .lede { margin: 0 0 1rem; color: var(--muted); max-width: 34ch; }
+    .join label, .dlg label { display: block; margin: 1rem 0 0.35rem; font-weight: 600; font-size: 0.92rem; }
     .join input, .dlg input { width: 100%; }
-    .join .btn { width: 100%; margin-top: 1.25rem; padding: 0.75rem 1.1rem; }
-    .me, .switch { margin: 0; color: var(--muted); }
-    .switch { margin-top: 1rem; font-size: 0.9rem; }
+    .join .btn { width: 100%; margin-top: 1.35rem; padding: 0.8rem 1.1rem; }
+    .me { margin: 0 0 1.5rem; padding-bottom: 1.25rem; border-bottom: 1px solid var(--line); display: flex; align-items: center; flex-wrap: wrap; gap: 0.35rem 0.5rem; color: var(--muted); }
+    .switch { margin: 1rem 0 0; font-size: 0.9rem; color: var(--muted); }
     .me strong { color: var(--ink); }
     .hint { margin: 0.4rem 0 0; font-size: 0.85rem; color: var(--muted); max-width: 44ch; }
     .form-error { margin: 1rem 0 0; font-size: 0.9rem; color: var(--danger); }
     .form-error:empty { display: none; }
     .form-error[data-kind="info"], .notice[data-kind="info"] { color: var(--muted); }
 
+    /* Each form on the join screen reads as its own card, instead of one long scroll of labels */
+    .join-card {
+      padding: 1.5rem 1.5rem 1.65rem;
+      margin-bottom: 1.25rem;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--r-lg);
+      box-shadow: var(--shadow-sm);
+    }
+    .join-card:last-child { margin-bottom: 0; }
+
     /* Rooms. On a wide screen this is a sidebar beside the chat; on a phone the same list sits above the
        join form and the header's "Rooms" button opens it. Both lists are drawn by renderRooms(). */
     .rail { display: none; }
-    .room-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.15rem; min-height: 0; overflow-y: auto; }
+    .room-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.2rem; min-height: 0; overflow-y: auto; }
     .room {
       display: flex;
       align-items: center;
-      gap: 0.5rem;
+      gap: 0.6rem;
       width: 100%;
-      padding: 0.55rem 0.75rem;
+      padding: 0.6rem 0.7rem;
       border: 0;
-      border-radius: 12px;
+      border-radius: var(--r-md);
       background: none;
       color: var(--ink);
       font: inherit;
       text-align: left;
       cursor: pointer;
+      transition: background 0.12s ease;
     }
     .room:hover { background: var(--bg); }
     .room[aria-current="true"] { background: var(--mine); color: var(--mine-ink); }
@@ -169,7 +206,7 @@
     .room-alert { display: inline-flex; flex: none; opacity: 0.75; }
     .room[aria-current="true"] .room-alert { opacity: 0.9; }
 
-    .my-rooms .room, .my-dms .room { min-height: 2.75rem; border: 1px solid var(--line); background: var(--surface); }
+    .my-rooms .room, .my-dms .room { min-height: 2.85rem; border: 1px solid var(--line); background: var(--surface); }
     .my-rooms .room[aria-current="true"], .my-dms .room[aria-current="true"] { border-color: var(--mine); background: var(--mine); }
     .my-dms { margin-top: 1.5rem; }
 
@@ -177,36 +214,40 @@
       .rail {
         display: flex;
         flex-direction: column;
-        gap: 0.75rem;
+        gap: 0.9rem;
         flex: none;
-        width: 15rem;
+        width: 17rem;
+        height: 100vh;
         height: 100dvh;
-        padding: 1rem 0.75rem;
-        border-left: 1px solid var(--line);
-        background: var(--surface);
+        padding: 1.15rem 0.85rem;
+        border-right: 1px solid var(--line);
+        background: var(--surface-2);
       }
       .my-rooms, .my-dms, #switch-room, #switch-dm { display: none; }
+      #join h1 { display: none; }
     }
-    .wordmark { margin: 0; padding: 0.15rem 0.75rem 0; font-size: 1.15rem; font-weight: 700; letter-spacing: -0.02em; }
-    .rail-empty { margin: 0; padding: 0 0.75rem; font-size: 0.9rem; color: var(--muted); }
-    .rail-heading { margin: 0.35rem 0.75rem 0; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+    .wordmark { display: flex; align-items: center; gap: 0.4rem; margin: 0; padding: 0.2rem 0.7rem 0.6rem; font-size: 1.2rem; font-weight: 700; letter-spacing: -0.02em; border-bottom: 1px solid var(--line); }
+    .wordmark::before { content: ""; width: 0.55rem; height: 0.55rem; border-radius: 50%; background: var(--accent); flex: none; }
+    .rail-empty { margin: 0; padding: 0.3rem 0.7rem; font-size: 0.88rem; color: var(--muted); }
+    .rail-heading { margin: 0.5rem 0.7rem 0.35rem; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); }
     .rail-section { display: flex; flex-direction: column; gap: 0.2rem; min-height: 0; flex: 1 1 0; }
-    .rail-actions { display: flex; flex-direction: column; gap: 0.5rem; margin-top: auto; }
+    .rail-actions { display: flex; flex-direction: column; gap: 0.5rem; margin-top: auto; padding-top: 0.75rem; border-top: 1px solid var(--line); }
     .rail-new {
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 0.4rem;
-      padding: 0.6rem 0.9rem;
-      border: 1px solid var(--line);
-      border-radius: 14px;
+      gap: 0.45rem;
+      padding: 0.65rem 0.9rem;
+      border: 1px dashed var(--line);
+      border-radius: var(--r-md);
       background: none;
       color: var(--ink);
       font: inherit;
       font-weight: 600;
       cursor: pointer;
+      transition: background 0.12s ease, border-color 0.12s ease;
     }
-    .rail-new:hover { background: var(--bg); }
+    .rail-new:hover { background: var(--surface); border-color: var(--mine); }
 
     /* Direct-message rows: an avatar, then a name and a one-line preview stacked, then a time and an
        unread dot. Built on top of .room, which already gives the button its layout, hover and
@@ -225,32 +266,40 @@
     .msg-avatar [data-dm-target]:hover { filter: brightness(1.1); }
 
     /* Chat screen */
-    .chat { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+    .chat { flex: 1; min-height: 0; display: flex; flex-direction: column; background: var(--bg); }
     .chat-head {
+      flex: none;
+      padding: 0.9rem clamp(1rem, 3vw, 2rem);
+      border-bottom: 1px solid var(--line);
+      background: var(--surface);
+      box-shadow: var(--shadow-sm);
+      z-index: 1;
+    }
+    .chat-head-inner {
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 1rem;
-      padding: 0.8rem 1rem;
-      border-bottom: 1px solid var(--line);
+      max-width: 62rem;
+      margin-inline: auto;
     }
     .title-row { display: flex; align-items: center; flex-wrap: wrap; gap: 0.2rem 0.6rem; }
     .chat-head h1 {
       margin: 0;
-      font-size: 1.4rem;
+      font-size: 1.3rem;
       font-weight: 700;
       letter-spacing: -0.02em;
-      line-height: 1.1;
+      line-height: 1.15;
       overflow-wrap: anywhere;
     }
     .badge {
       display: inline-flex;
       align-items: center;
       gap: 0.3rem;
-      padding: 0.1rem 0.55rem;
+      padding: 0.15rem 0.6rem;
       border: 1px solid var(--line);
       border-radius: 999px;
-      font-size: 0.78rem;
+      font-size: 0.76rem;
       font-weight: 600;
       color: var(--muted);
     }
@@ -258,24 +307,25 @@
       display: flex;
       align-items: center;
       gap: 0.5rem;
-      margin-top: 0.15rem;
-      font-size: 0.85rem;
+      margin-top: 0.2rem;
+      font-size: 0.84rem;
       color: var(--muted);
     }
-    .dot { width: 0.55rem; height: 0.55rem; border-radius: 50%; background: var(--muted); }
+    .dot { width: 0.5rem; height: 0.5rem; border-radius: 50%; background: var(--muted); flex: none; }
     .status[data-state="open"] .dot { background: var(--online); }
     .status[data-state="connecting"] .dot { background: var(--accent); }
-    .actions { display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; justify-content: flex-end; }
+    .actions { display: flex; flex-wrap: wrap; gap: 0.1rem 1rem; justify-content: flex-end; }
 
     /* "Add to Home Screen" tip for iPhone and iPad, where notifications only work for an installed app */
     .install-tip {
+      flex: none;
       display: flex;
       align-items: flex-start;
       justify-content: space-between;
       gap: 1rem;
-      padding: 0.7rem 1rem;
+      padding: 0.75rem clamp(1rem, 3vw, 2rem);
       border-bottom: 1px solid var(--line);
-      background: var(--surface);
+      background: var(--surface-2);
       font-size: 0.88rem;
     }
     .install-tip strong { display: block; }
@@ -285,10 +335,13 @@
     .messages {
       flex: 1;
       min-height: 0;
+      width: 100%;
+      max-width: 62rem;
+      margin-inline: auto;
       overflow-y: auto;
       display: flex;
       flex-direction: column;
-      padding: 1rem;
+      padding: 1.25rem clamp(1rem, 3vw, 2rem);
     }
     .empty { margin: auto; max-width: 32ch; text-align: center; color: var(--muted); }
     .empty-note { display: block; margin-top: 0.6rem; font-size: 0.9rem; }
@@ -315,11 +368,11 @@
     .avatar img { display: block; width: 100%; height: 100%; object-fit: cover; }
     .avatar.sm { --size: 1.5rem; }
     .avatar.xl { --size: 6.5rem; }
-    .me .avatar { vertical-align: middle; margin: 0 0.35rem 0 0.25rem; }
+    .me .avatar { vertical-align: middle; margin: 0 0.15rem 0 0.1rem; }
 
-    .msg { display: flex; align-items: flex-start; gap: 0.5rem; margin-top: 0.8rem; }
+    .msg { display: flex; align-items: flex-start; gap: 0.5rem; margin-top: 0.85rem; }
     .msg.mine { flex-direction: row-reverse; }
-    .msg.grouped { margin-top: 0.2rem; }
+    .msg.grouped { margin-top: 0.22rem; }
     .msg-avatar { flex: none; width: 2rem; } /* stays even when empty, so grouped bubbles line up */
     .msg-body {
       display: flex;
@@ -329,15 +382,16 @@
       max-width: min(calc(100% - 2.5rem), 34rem);
     }
     .msg.mine .msg-body { align-items: flex-end; }
-    .head { display: flex; gap: 0.5rem; align-items: baseline; margin: 0 0.4rem 0.2rem; font-size: 0.8rem; color: var(--muted); }
+    .head { display: flex; gap: 0.5rem; align-items: baseline; margin: 0 0.4rem 0.25rem; font-size: 0.8rem; color: var(--muted); }
     .who { font-weight: 600; color: var(--ink); }
 
     .bubble {
       margin: 0;
       max-width: 100%;
-      padding: 0.5rem 0.85rem;
+      padding: 0.55rem 0.9rem;
       background: var(--surface);
       border-radius: 4px 18px 18px 18px;
+      box-shadow: var(--shadow-sm);
       white-space: pre-wrap;
       overflow-wrap: anywhere;
     }
@@ -348,17 +402,20 @@
     }
     .msg.grouped .bubble { border-radius: 18px; }
 
-    .notice { margin: 0; padding: 0 1rem 0.4rem; font-size: 0.85rem; color: var(--danger); }
+    .notice { flex: none; width: 100%; max-width: 62rem; margin: 0 auto; padding: 0 clamp(1rem, 3vw, 2rem) 0.4rem; font-size: 0.85rem; color: var(--danger); }
     .notice:empty { display: none; }
 
     /* Typing indicator. The line always takes up its height, so the message list never jumps when it appears. */
     .typing {
+      flex: none;
       display: flex;
       align-items: center;
       gap: 0.45rem;
       min-height: 1.6rem;
-      margin: 0;
-      padding: 0 1rem 0.3rem;
+      width: 100%;
+      max-width: 62rem;
+      margin: 0 auto;
+      padding: 0 clamp(1rem, 3vw, 2rem) 0.3rem;
       font-size: 0.85rem;
       color: var(--muted);
     }
@@ -382,13 +439,24 @@
     }
 
     .composer {
+      flex: none;
       display: flex;
       align-items: flex-end;
-      gap: 0.5rem;
-      padding: 0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom, 0px));
-      border-top: 1px solid var(--line);
+      gap: 0.6rem;
+      width: 100%;
+      max-width: 62rem;
+      margin-inline: auto;
+      padding: 0.7rem clamp(1rem, 3vw, 2rem) calc(0.9rem + env(safe-area-inset-bottom, 0px));
     }
-    .composer textarea { flex: 1; min-width: 0; max-height: 140px; resize: none; }
+    .composer textarea {
+      flex: 1;
+      min-width: 0;
+      max-height: 140px;
+      resize: none;
+      border-radius: var(--r-lg);
+      box-shadow: var(--shadow-sm);
+    }
+    .composer .btn { border-radius: var(--r-lg); padding: 0.65rem 1.3rem; }
 
     /* Room settings dialog */
     dialog {
@@ -396,17 +464,18 @@
       max-height: 90dvh;
       padding: 0;
       border: 1px solid var(--line);
-      border-radius: 18px;
+      border-radius: var(--r-lg);
       background: var(--surface);
       color: var(--ink);
+      box-shadow: var(--shadow-lg);
     }
-    dialog::backdrop { background: rgb(0 0 0 / 0.5); }
-    .dlg { padding: 1.25rem 1.25rem 1rem; }
+    dialog::backdrop { background: rgb(10 16 13 / 0.55); backdrop-filter: blur(2px); }
+    .dlg { padding: 1.4rem 1.4rem 1.1rem; }
     .dlg h2 { margin: 0 0 0.25rem; font-size: 1.3rem; letter-spacing: -0.02em; overflow-wrap: anywhere; }
     .dlg h3 { margin: 0; font-size: 1rem; }
     .dlg .btn { margin-top: 0.75rem; }
     .dlg .row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 1rem; }
-    .dlg hr { margin: 1.25rem 0 1rem; border: 0; border-top: 1px solid var(--line); }
+    .dlg hr { margin: 1.35rem 0 1.1rem; border: 0; border-top: 1px solid var(--line); }
     .dlg .close { display: block; margin: 1rem 0 0 auto; }
     .profile-preview { display: flex; justify-content: center; margin: 1.25rem 0 0.5rem; }
     .profile-pic .row { justify-content: center; margin-top: 0.25rem; }
@@ -473,57 +542,63 @@
           <ul class="room-list" data-dm-list></ul>
         </section>
 
-        <form id="join-form" novalidate>
-          <h2>Join or create a room</h2>
-          <p class="lede">Enter a room name. If it doesn't exist yet, it's created. Add a password to make a new room private.</p>
+        <div class="join-card">
+          <form id="join-form" novalidate>
+            <h2>Join or create a room</h2>
+            <p class="lede">Enter a room name. If it doesn't exist yet, it's created. Add a password to make a new room private.</p>
 
-          <label for="room-input">Room</label>
-          <input id="room-input" maxlength="32" autocomplete="off" autocapitalize="none" spellcheck="false">
+            <label for="room-input">Room</label>
+            <input id="room-input" maxlength="32" autocomplete="off" autocapitalize="none" spellcheck="false">
 
-          <label for="pw-input">Password (optional)</label>
-          <input id="pw-input" type="password" maxlength="128" autocomplete="off" aria-describedby="pw-hint">
-          <p class="hint" id="pw-hint">Leave blank for a public room. Set one to make a new private room, or enter it to join a private room. If you created the room, you don't need it.</p>
+            <label for="pw-input">Password (optional)</label>
+            <input id="pw-input" type="password" maxlength="128" autocomplete="off" aria-describedby="pw-hint">
+            <p class="hint" id="pw-hint">Leave blank for a public room. Set one to make a new private room, or enter it to join a private room. If you created the room, you don't need it.</p>
 
-          <p class="form-error" id="join-error" role="alert"></p>
-          <button class="btn" type="submit" id="join-btn">Join room</button>
-        </form>
+            <p class="form-error" id="join-error" role="alert"></p>
+            <button class="btn" type="submit" id="join-btn">Join room</button>
+          </form>
+        </div>
 
-        <form id="dm-form" novalidate>
-          <h2>Message someone</h2>
-          <p class="lede">Enter their username to start a private, one-to-one conversation. They need a betachat account already.</p>
+        <div class="join-card">
+          <form id="dm-form" novalidate>
+            <h2>Message someone</h2>
+            <p class="lede">Enter their username to start a private, one-to-one conversation. They need a betachat account already.</p>
 
-          <label for="dm-user">Username</label>
-          <input id="dm-user" maxlength="20" autocomplete="off" autocapitalize="none" spellcheck="false">
+            <label for="dm-user">Username</label>
+            <input id="dm-user" maxlength="20" autocomplete="off" autocapitalize="none" spellcheck="false">
 
-          <p class="form-error" id="dm-error" role="alert"></p>
-          <button class="btn" type="submit" id="dm-btn">Message</button>
-        </form>
+            <p class="form-error" id="dm-error" role="alert"></p>
+            <button class="btn" type="submit" id="dm-btn">Message</button>
+          </form>
+        </div>
       </div>
     </section>
 
     <section class="chat" id="chat" hidden>
       <header class="chat-head">
-        <div>
-          <div class="title-row">
-            <h1 id="room-title"></h1>
-            <span class="badge" id="private-badge" hidden>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
-              Private
-            </span>
+        <div class="chat-head-inner">
+          <div>
+            <div class="title-row">
+              <h1 id="room-title"></h1>
+              <span class="badge" id="private-badge" hidden>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+                Private
+              </span>
+            </div>
+            <div class="status" id="status" data-state="connecting">
+              <span class="dot" aria-hidden="true"></span>
+              <span id="status-text">Connecting…</span>
+              <span id="online"></span>
+            </div>
           </div>
-          <div class="status" id="status" data-state="connecting">
-            <span class="dot" aria-hidden="true"></span>
-            <span id="status-text">Connecting…</span>
-            <span id="online"></span>
+          <div class="actions">
+            <button class="link" type="button" id="settings-btn" hidden>Room settings</button>
+            <button class="link profile-open" type="button">Profile</button>
+            <button class="link" type="button" id="copy">Copy invite link</button>
+            <button class="link" type="button" id="alerts-btn" aria-pressed="false">Alerts here: off</button>
+            <button class="link" type="button" id="switch-dm">Messages</button>
+            <button class="link" type="button" id="switch-room">Rooms</button>
           </div>
-        </div>
-        <div class="actions">
-          <button class="link" type="button" id="settings-btn" hidden>Room settings</button>
-          <button class="link profile-open" type="button">Profile</button>
-          <button class="link" type="button" id="copy">Copy invite link</button>
-          <button class="link" type="button" id="alerts-btn" aria-pressed="false">Alerts here: off</button>
-          <button class="link" type="button" id="switch-dm">Messages</button>
-          <button class="link" type="button" id="switch-room">Rooms</button>
         </div>
       </header>
 
